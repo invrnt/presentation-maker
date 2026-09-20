@@ -6,7 +6,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+try {
+    # El valor numérico funciona aunque el .NET antiguo de Windows 7 no exponga Tls12 en el enum.
+    [Net.ServicePointManager]::SecurityProtocol = [Enum]::ToObject([Net.SecurityProtocolType], 3072)
+} catch {
+    throw "No se pudo activar TLS 1.2. Instala las actualizaciones pendientes de Windows 7 y vuelve a intentarlo."
+}
 
 $InstallDir = Join-Path $env:LOCALAPPDATA "PresentationMaker"
 $WorkDir = Join-Path $env:TEMP ("PresentationMakerInstaller-" + [Guid]::NewGuid().ToString("N"))
@@ -25,18 +30,47 @@ function Get-Sha256([string]$Path) {
 
 function Download-Checked([string]$Url, [string]$Path, [string]$ExpectedHash) {
     $client = New-Object Net.WebClient
-    try { $client.DownloadFile($Url, $Path) } finally { $client.Dispose() }
+    try {
+        $client.DownloadFile($Url, $Path)
+    } catch {
+        throw "No se pudo descargar $Url. Revisa la fecha y hora del equipo y las actualizaciones de certificados de Windows. Detalle: $($_.Exception.Message)"
+    } finally { $client.Dispose() }
     $actual = Get-Sha256 $Path
     if ($actual -ne $ExpectedHash.ToLowerInvariant()) { throw "La verificación SHA-256 falló para $Url" }
 }
 
 function Expand-Zip([string]$Zip, [string]$Destination) {
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [IO.Compression.ZipFile]::ExtractToDirectory($Zip, $Destination)
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+        [IO.Compression.ZipFile]::ExtractToDirectory($Zip, $Destination)
+        return
+    } catch {
+        Write-Host "Usando el extractor compatible con Windows 7"
+    }
+
+    $Shell = New-Object -ComObject Shell.Application
+    $ZipFolder = $Shell.NameSpace($Zip)
+    $DestinationFolder = $Shell.NameSpace($Destination)
+    if (-not $ZipFolder -or -not $DestinationFolder) { throw "Windows no pudo abrir el archivo ZIP." }
+    $DestinationFolder.CopyHere($ZipFolder.Items(), 20)
+
+    $PreviousSize = -1
+    $StableChecks = 0
+    $Deadline = [DateTime]::UtcNow.AddMinutes(10)
+    while ($StableChecks -lt 5) {
+        if ([DateTime]::UtcNow -gt $Deadline) { throw "La extracción del archivo ZIP tardó demasiado." }
+        Start-Sleep -Seconds 1
+        $Files = Get-ChildItem $Destination -Recurse -ErrorAction SilentlyContinue | Where-Object { -not $_.PSIsContainer }
+        $CurrentSize = ($Files | Measure-Object -Property Length -Sum).Sum
+        if ($null -eq $CurrentSize) { $CurrentSize = 0 }
+        if ($CurrentSize -gt 0 -and $CurrentSize -eq $PreviousSize) { $StableChecks++ } else { $StableChecks = 0 }
+        $PreviousSize = $CurrentSize
+    }
 }
 
-if (-not [Environment]::Is64BitOperatingSystem) { throw "Presentation Maker requiere Windows de 64 bits." }
+$Is64BitOS = ($env:PROCESSOR_ARCHITECTURE -eq "AMD64") -or ($env:PROCESSOR_ARCHITEW6432 -eq "AMD64")
+if (-not $Is64BitOS) { throw "Presentation Maker requiere Windows de 64 bits." }
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 
 try {
@@ -48,10 +82,14 @@ try {
     Write-Host "[2/5] Compilando la aplicación"
     $SourceZip = Join-Path $WorkDir "source.zip"
     $SourceDir = Join-Path $WorkDir "source"
-    if ([string]::IsNullOrWhiteSpace($SourceSha256)) {
+    if (-not $SourceSha256 -or $SourceSha256.Trim().Length -eq 0) {
         $SourceHashFile = Join-Path $WorkDir "source.zip.sha256"
         $HashClient = New-Object Net.WebClient
-        try { $HashClient.DownloadFile($SourceSha256Url, $SourceHashFile) } finally { $HashClient.Dispose() }
+        try {
+            $HashClient.DownloadFile($SourceSha256Url, $SourceHashFile)
+        } catch {
+            throw "No se pudo descargar $SourceSha256Url. Revisa la fecha y hora del equipo y las actualizaciones de certificados de Windows. Detalle: $($_.Exception.Message)"
+        } finally { $HashClient.Dispose() }
         $SourceSha256 = ((Get-Content $SourceHashFile | Select-Object -First 1) -split '\s+')[0]
         if ($SourceSha256 -notmatch '^[a-fA-F0-9]{64}$') { throw "La release no contiene un SHA-256 válido." }
     }

@@ -66,10 +66,10 @@ npx wrangler dev
 El repositorio público ya contiene el instalador, el `source.zip` y la URL del Worker. En cada equipo abre PowerShell como usuario normal y ejecuta el mismo comando:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$u='https://github.com/invrnt/presentation-maker/releases/latest/download/install.ps1';$p=Join-Path $env:TEMP 'presentation-maker-install.ps1';(New-Object Net.WebClient).DownloadFile($u,$p);& $p"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Set-Variable ErrorActionPreference Stop;[Net.ServicePointManager]::SecurityProtocol=[Enum]::ToObject([Net.SecurityProtocolType],3072);(New-Object Net.WebClient).DownloadFile('https://github.com/invrnt/presentation-maker/releases/latest/download/install.ps1',[IO.Path]::Combine([IO.Path]::GetTempPath(),'presentation-maker-install.ps1'));& ([IO.Path]::Combine([IO.Path]::GetTempPath(),'presentation-maker-install.ps1'))"
 ```
 
-El comando usa `Net.WebClient` para que también funcione con el PowerShell incluido en Windows 7. No hace falta abrir PowerShell como administrador.
+El comando usa `Net.WebClient` y activa TLS 1.2 explícitamente para el PowerShell de Windows 7. No hace falta abrir PowerShell como administrador. Si Windows 7 sigue cerrando la conexión, instala sus actualizaciones pendientes y comprueba que la fecha y hora sean correctas antes de repetirlo.
 
 El instalador descarga la última release de GitHub, verifica el SHA-256 publicado, compila la aplicación y su actualizador con Go 1.20.14, instala las herramientas multimedia, crea el acceso directo y abre la aplicación. En Windows 7 selecciona automáticamente la versión antigua de yt-dlp compatible con ese sistema; en Windows 8, 8.1, 10 y 11 usa la versión posterior fijada.
 
