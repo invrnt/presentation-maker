@@ -97,8 +97,8 @@ try {
     Copy-Item $FfmpegExe.FullName (Join-Path $BinDir "ffmpeg.exe") -Force
     Copy-Item $FfprobeExe.FullName (Join-Path $BinDir "ffprobe.exe") -Force
 
-    $YtUrl = "https://github.com/yt-dlp/yt-dlp/releases/download/2025.11.12/yt-dlp.exe"
-    $YtHash = "9f8b03a37125854895a7eebf50a605e34e7ec3bd2444931eff377f3ccec50e96"
+    $YtUrl = "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.exe"
+    $YtHash = "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a"
     Download-Checked $YtUrl (Join-Path $BinDir "yt-dlp.exe") $YtHash
 
     Write-Host "[4/5] Creando acceso directo"

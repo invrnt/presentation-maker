@@ -86,7 +86,9 @@ git push origin v1.0.1
 
 El workflow `.github/workflows/release.yml` compila el frontend y crea la release con `source.zip`, `source.zip.sha256` e `install.ps1`. La versión del tag se compila dentro del ejecutable. Usa siempre `vMAJOR.MINOR.PATCH` y no reutilices un tag publicado.
 
-El instalador descarga Go 1.20.14 en una carpeta temporal, compila `PresentationMaker.exe` y `PresentationMakerUpdater.exe`, instala FFmpeg 7.0.1 y una versión fijada de yt-dlp, crea el acceso directo y borra el entorno de compilación. No cambia Defender, SmartScreen, el firewall ni la política permanente de PowerShell.
+El instalador descarga Go 1.20.14 en una carpeta temporal, compila `PresentationMaker.exe` y `PresentationMakerUpdater.exe`, instala FFmpeg 7.0.1 y yt-dlp 2026.08.19, crea el acceso directo y borra el entorno de compilación. No cambia Defender, SmartScreen, el firewall ni la política permanente de PowerShell.
+
+Antes de usar YouTube, la aplicación comprueba que esa versión compatible de yt-dlp esté instalada y la actualiza si hace falta. Prefiere video H.264 y audio AAC de hasta 1080p. Si YouTube solo entrega VP9, AV1 u Opus, FFmpeg lo convierte automáticamente a MP4 H.264/AAC con píxeles `yuv420p` y carga rápida.
 
 ## Asistente de IA
 

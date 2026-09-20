@@ -11,11 +11,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+const ytDLPVersion = "2026.08.19"
+
+var ytDLPUpdateMu sync.Mutex
+var ytDLPReady bool
 
 type job struct {
 	ID, Message, Error string
@@ -110,10 +116,14 @@ func (a *app) importSongHandler(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 400, "Pega un enlace válido de YouTube.")
 		return
 	}
-	command := exec.Command(a.bin("yt-dlp"), "--dump-single-json", "--skip-download", "--no-playlist", "--", input.URL)
-	output, err := command.Output()
+	if err := a.ensureYTDLP(); err != nil {
+		jsonError(w, 503, err.Error())
+		return
+	}
+	command := exec.Command(a.bin("yt-dlp"), "--dump-single-json", "--skip-download", "--no-playlist", "--no-colors", "--", input.URL)
+	output, err := command.CombinedOutput()
 	if err != nil {
-		jsonError(w, 502, "No se pudo leer ese video. Comprueba el enlace.")
+		jsonError(w, 502, "No se pudo leer ese video: "+lastLine(string(output)))
 		return
 	}
 	var metadata struct {
@@ -184,12 +194,27 @@ func (a *app) downloadSong(jobID string, item song) {
 	a.jobs.mediaLock.Lock()
 	defer a.jobs.mediaLock.Unlock()
 	fail := func(message string) { a.jobs.update(jobID, "", message, true) }
+	a.jobs.update(jobID, "Comprobando el descargador…", "", false)
+	if err := a.ensureYTDLP(); err != nil {
+		fail(err.Error())
+		return
+	}
 	a.jobs.update(jobID, "Descargando video…", "", false)
 	base := filepath.Join(a.root, "cache", "media", item.YoutubeID)
 	output := base + ".mp4"
 	temporary := base + ".download.mp4"
-	_ = os.Remove(temporary)
-	args := []string{"--no-playlist", "--newline", "-f", "bestvideo[height<=1080][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[height<=1080][ext=mp4]", "--merge-output-format", "mp4", "-o", temporary, "--", item.YoutubeURL}
+	removeDownloads := func() {
+		matches, _ := filepath.Glob(base + ".download*")
+		for _, match := range matches {
+			_ = os.Remove(match)
+		}
+	}
+	removeDownloads()
+	ffmpegLocation := a.bin("ffmpeg")
+	if resolved, lookupErr := exec.LookPath(ffmpegLocation); lookupErr == nil {
+		ffmpegLocation = resolved
+	}
+	args := []string{"--no-playlist", "--newline", "--no-colors", "--concurrent-fragments", "4", "--retries", "5", "--fragment-retries", "5", "--ffmpeg-location", ffmpegLocation, "-f", "bv*[height<=?1080]+ba/b[height<=?1080]/18/b", "-S", "res:1080,vcodec:h264,acodec:aac", "--merge-output-format", "mp4", "-o", temporary, "--", item.YoutubeURL}
 	command := exec.Command(a.bin("yt-dlp"), args...)
 	pipe, err := command.StdoutPipe()
 	if err != nil {
@@ -203,33 +228,58 @@ func (a *app) downloadSong(jobID string, item song) {
 	}
 	scanner := bufio.NewScanner(pipe)
 	progress := regexp.MustCompile(`\[download\]\s+([0-9.]+)%`)
+	lastOutput := ""
 	for scanner.Scan() {
-		if match := progress.FindStringSubmatch(scanner.Text()); len(match) == 2 {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			lastOutput = line
+		}
+		if match := progress.FindStringSubmatch(line); len(match) == 2 {
 			a.jobs.update(jobID, "Descargando "+strings.TrimSuffix(match[1], ".0")+"%", "", false)
-		} else if strings.Contains(scanner.Text(), "Merging formats") {
+		} else if strings.Contains(line, "Merging formats") {
 			a.jobs.update(jobID, "Combinando video…", "", false)
 		}
 	}
 	if err := command.Wait(); err != nil {
-		_ = os.Remove(temporary)
-		fail("La descarga falló. YouTube puede haber cambiado el formato del video.")
+		removeDownloads()
+		fail("La descarga falló: " + lastLine(lastOutput))
+		return
+	}
+	if _, err := os.Stat(temporary); err != nil {
+		removeDownloads()
+		fail("yt-dlp no pudo combinar el video: " + lastLine(lastOutput))
 		return
 	}
 	a.jobs.update(jobID, "Preparando para PowerPoint…", "", false)
 	width, height, duration, vcodec, acodec := a.probe(temporary)
-	if !strings.HasPrefix(vcodec, "h264") || (!strings.HasPrefix(acodec, "aac") && acodec != "") {
-		converted := base + ".converted.mp4"
-		cmd := exec.Command(a.bin("ffmpeg"), "-y", "-i", temporary, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", converted)
-		if outputBytes, err := cmd.CombinedOutput(); err != nil {
-			_ = os.Remove(temporary)
-			fail("FFmpeg no pudo preparar el video: " + lastLine(string(outputBytes)))
-			return
-		}
-		_ = os.Remove(temporary)
-		temporary = converted
-		width, height, duration, _, _ = a.probe(temporary)
+	if width < 1 || height < 1 || duration < 1 || vcodec == "" {
+		removeDownloads()
+		fail("El archivo descargado no contiene un video válido.")
+		return
 	}
-	if err := os.Rename(temporary, output); err != nil {
+	converted := base + ".converted.mp4"
+	ffmpegArgs := []string{"-y", "-i", temporary, "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn"}
+	if powerpointCopyable(vcodec, acodec) {
+		ffmpegArgs = append(ffmpegArgs, "-c:v", "copy", "-c:a", "copy")
+	} else {
+		ffmpegArgs = append(ffmpegArgs, "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-profile:v", "high", "-level", "4.1", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k")
+	}
+	ffmpegArgs = append(ffmpegArgs, "-tag:v", "avc1", "-movflags", "+faststart", converted)
+	if outputBytes, err := exec.Command(a.bin("ffmpeg"), ffmpegArgs...).CombinedOutput(); err != nil {
+		_ = os.Remove(temporary)
+		_ = os.Remove(converted)
+		fail("FFmpeg no pudo preparar el video: " + lastLine(string(outputBytes)))
+		return
+	}
+	_ = os.Remove(temporary)
+	width, height, duration, vcodec, acodec = a.probe(converted)
+	if width < 1 || height < 1 || duration < 1 || !powerpointCopyable(vcodec, acodec) {
+		_ = os.Remove(converted)
+		fail("El video no pudo convertirse a MP4 compatible con PowerPoint.")
+		return
+	}
+	_ = os.Remove(output)
+	if err := os.Rename(converted, output); err != nil {
 		fail("No se pudo guardar el video.")
 		return
 	}
@@ -244,6 +294,39 @@ func (a *app) downloadSong(jobID string, item song) {
 	a.jobs.update(jobID, "Listo", "", true)
 }
 
+func (a *app) ensureYTDLP() error {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	ytDLPUpdateMu.Lock()
+	defer ytDLPUpdateMu.Unlock()
+	if ytDLPReady {
+		return nil
+	}
+	tool := a.bin("yt-dlp")
+	version, err := exec.Command(tool, "--version").Output()
+	if err != nil {
+		return fmt.Errorf("yt-dlp no está instalado. Ejecuta de nuevo el instalador")
+	}
+	currentVersion := strings.TrimSpace(string(version))
+	if newerVersion(ytDLPVersion, currentVersion) {
+		result, updateErr := exec.Command(tool, "--update-to", "stable@"+ytDLPVersion).CombinedOutput()
+		if updateErr != nil {
+			return fmt.Errorf("no se pudo actualizar yt-dlp: %s", lastLine(string(result)))
+		}
+		version, err = exec.Command(tool, "--version").Output()
+		if err != nil || newerVersion(ytDLPVersion, strings.TrimSpace(string(version))) {
+			return fmt.Errorf("yt-dlp no quedó actualizado")
+		}
+	}
+	ytDLPReady = true
+	return nil
+}
+
+func powerpointCopyable(videoCodec, audioCodec string) bool {
+	return strings.HasPrefix(videoCodec, "h264") && (audioCodec == "" || strings.HasPrefix(audioCodec, "aac"))
+}
+
 func (a *app) probe(file string) (width, height, duration int, vcodec, acodec string) {
 	cmd := exec.Command(a.bin("ffprobe"), "-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height:format=duration", "-of", "json", file)
 	data, err := cmd.Output()
@@ -252,10 +335,14 @@ func (a *app) probe(file string) (width, height, duration int, vcodec, acodec st
 	}
 	var result struct {
 		Streams []struct {
-			CodecType, CodecName string
-			Width, Height        int
+			CodecType string `json:"codec_type"`
+			CodecName string `json:"codec_name"`
+			Width     int    `json:"width"`
+			Height    int    `json:"height"`
 		}
-		Format struct{ Duration string }
+		Format struct {
+			Duration string `json:"duration"`
+		} `json:"format"`
 	}
 	if json.Unmarshal(data, &result) != nil {
 		return
@@ -275,7 +362,7 @@ func (a *app) probe(file string) (width, height, duration int, vcodec, acodec st
 
 func lastLine(value string) string {
 	lines := strings.Split(strings.TrimSpace(value), "\n")
-	if len(lines) == 0 {
+	if len(lines) == 0 || strings.TrimSpace(lines[len(lines)-1]) == "" {
 		return "error desconocido"
 	}
 	line := strings.TrimSpace(lines[len(lines)-1])
