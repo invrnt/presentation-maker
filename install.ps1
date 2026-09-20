@@ -1,5 +1,5 @@
 param(
-    [string]$SourceUrl = "https://raw.githubusercontent.com/invrnt/presentation-maker/main/source.zip",
+    [string]$SourceUrl = "https://raw.githubusercontent.com/invrnt/presentation-maker/0da5a3a8244f3e0c9eda67763b83bb41ad6cbff5/source.zip",
     [string]$SourceSha256 = "1839b30176401e27b64f70163cb3db16e3fa2ad1c72734311f6c7436f87febc4",
     [string]$ApiUrl = "https://presentation-maker-api.juan-c.workers.dev"
 )
