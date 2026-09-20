@@ -1,11 +1,20 @@
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "presentation-maker-api",
-  "main": "src/index.ts",
-  "compatibility_date": "2026-09-19",
-  "compatibility_flags": ["nodejs_compat"],
-  "observability": { "enabled": true, "head_sampling_rate": 1 },
-  "d1_databases": [
-    { "binding": "DB", "migrations_dir": "migrations" }
-  ]
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "presentation-maker-api",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-09-19",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"migrations_dir": "migrations",
+			"database_id": "02babe0e-1b56-4a2e-b877-3dd2080f832b"
+		}
+	]
 }

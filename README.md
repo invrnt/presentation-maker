@@ -59,22 +59,28 @@ npx wrangler d1 migrations apply DB --local
 npx wrangler dev
 ```
 
-## Preparar una publicación privada
+## Instalación en Windows 7, 8, 8.1, 10 y 11
+
+El repositorio público ya contiene el instalador, el `source.zip` y la URL del Worker. En cada equipo abre PowerShell como usuario normal y ejecuta el mismo comando:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$u='https://raw.githubusercontent.com/invrnt/presentation-maker/main/install.ps1';$p=Join-Path $env:TEMP 'presentation-maker-install.ps1';(New-Object Net.WebClient).DownloadFile($u,$p);& $p"
+```
+
+El comando usa `Net.WebClient` para que también funcione con el PowerShell incluido en Windows 7. No hace falta abrir PowerShell como administrador.
+
+El instalador descarga `source.zip` desde GitHub, verifica el SHA-256 fijado, compila el ejecutable con Go 1.20.14, instala las herramientas multimedia, crea el acceso directo y abre la aplicación. En Windows 7 selecciona automáticamente la versión antigua de yt-dlp compatible con ese sistema; en Windows 8, 8.1, 10 y 11 usa la versión posterior fijada.
+
+Si quieres regenerar una publicación después de cambiar el código:
 
 1. Compila el frontend.
 2. Genera `source.zip`.
-3. Sube `install.ps1` y `source.zip` a una ubicación HTTPS accesible para tus amigos.
-4. Copia el SHA-256 que imprime el script.
+3. Sube `source.zip` a la rama `main`.
+4. Copia el SHA-256 nuevo al valor `$SourceSha256` de `install.ps1`.
 
 ```powershell
 npm run build -w apps/web
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-source-zip.ps1
-```
-
-El comando de instalación queda así:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr 'URL_DE_INSTALL_PS1' -UseBasicParsing -OutFile `$env:TEMP\pm-install.ps1; & `$env:TEMP\pm-install.ps1 -SourceUrl 'URL_DE_SOURCE_ZIP' -SourceSha256 'SHA256_DE_SOURCE_ZIP' -ApiUrl 'URL_DEL_WORKER'"
 ```
 
 El script descarga Go 1.20.14 en una carpeta temporal, compila `PresentationMaker.exe`, instala FFmpeg 7.0.1 y una versión fijada de yt-dlp, crea el acceso directo y borra el entorno de compilación. No cambia Defender, SmartScreen, el firewall ni la política permanente de PowerShell.
