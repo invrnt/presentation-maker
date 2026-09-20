@@ -8,3 +8,9 @@ export type Project = { version: 1; id: string; title: string; slides: Slide[]; 
 export type ProjectSummary = { id: string; title: string; document: Project; createdAt: number; updatedAt: number }
 export type Song = { id: string; youtubeId: string; youtubeUrl: string; title: string; durationSeconds?: number; downloaded: boolean; posterUrl?: string }
 export type UpdateInfo = { currentVersion: string; latestVersion?: string; available: boolean; notes?: string; publishedAt?: string }
+export type AIPlannedText = { text: string; x: number | null; y: number | null; width: number | null; height: number | null; fontSize: number | null; fontWeight: 400 | 700 | null; color: string | null; align: "left" | "center" | "right" | null }
+export type AIPlan = {
+  summary: string
+  slides: { insertAt: number; songId: string | null; youtubeUrl: string | null; texts: AIPlannedText[] }[]
+  existingSlideTexts: { slideId: string; texts: AIPlannedText[] }[]
+}

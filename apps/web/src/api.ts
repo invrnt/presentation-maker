@@ -1,4 +1,4 @@
-import type { Project, ProjectSummary, Song, UpdateInfo, User } from "./types"
+import type { AIPlan, Project, ProjectSummary, Song, UpdateInfo, User } from "./types"
 
 export class ApiError extends Error {
   status: number
@@ -30,4 +30,13 @@ export const api = {
   createUser: (username: string, password: string, role: string) => request<User>("/api/admin/users", { method: "POST", body: JSON.stringify({ username, password, role }) }),
   update: () => request<UpdateInfo>("/api/update"),
   startUpdate: () => request<{ url: string }>("/api/update/start", { method: "POST" }),
+  aiPlan: (message: string, images: File[], project: object) => {
+    const form = new FormData()
+    form.append("message", message)
+    form.append("project", JSON.stringify(project))
+    images.forEach((file) => form.append("images", file))
+    return request<{ plan: AIPlan; model: string }>("/api/ai/plan", { method: "POST", body: form })
+  },
+  aiSettings: () => request<{ model: string }>("/api/admin/settings/ai"),
+  saveAISettings: (model: string) => request<{ model: string }>("/api/admin/settings/ai", { method: "PATCH", body: JSON.stringify({ model }) }),
 }

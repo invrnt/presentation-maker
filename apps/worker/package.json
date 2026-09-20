@@ -12,7 +12,15 @@
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "seed:admin": "node scripts/seed-admin.mjs"
   },
-  "dependencies": { "hono": "^4.9.8" },
-  "devDependencies": { "@cloudflare/workers-types": "latest", "typescript": "^5.9.2", "wrangler": "latest" }
+  "dependencies": {
+    "@ai-sdk/gateway": "^4.0.87",
+    "ai": "^7.0.107",
+    "hono": "^4.9.8",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "^5.9.2",
+    "wrangler": "latest"
+  }
 }
-

@@ -10,6 +10,7 @@ type EditorStore = {
   selectedId: string | null
   dirty: boolean
   setProject: (project: Project) => void
+  applyProject: (project: Project, slideId?: string) => void
   selectSlide: (id: string) => void
   selectElement: (id: string | null) => void
   updateElement: (id: string, patch: Partial<SlideElement>) => void
@@ -25,6 +26,7 @@ type EditorStore = {
 export const useEditor = create<EditorStore>((set) => ({
   project: null, slideId: null, selectedId: null, dirty: false,
   setProject: (project) => set({ project, slideId: project.slides[0]?.id ?? null, selectedId: null, dirty: false }),
+  applyProject: (project, slideId) => set({ project, slideId: slideId || project.slides[0]?.id || null, selectedId: null, dirty: true }),
   selectSlide: (slideId) => set({ slideId, selectedId: null }),
   selectElement: (selectedId) => set({ selectedId }),
   updateElement: (id, patch) => set((state) => state.project ? ({ project: { ...state.project, slides: state.project.slides.map((slide) => slide.id === state.slideId ? { ...slide, elements: slide.elements.map((item) => item.id === id ? { ...item, ...patch } as SlideElement : item) } : slide) }, dirty: true }) : state),

@@ -86,6 +86,21 @@ El workflow `.github/workflows/release.yml` compila el frontend y crea la releas
 
 El instalador descarga Go 1.20.14 en una carpeta temporal, compila `PresentationMaker.exe` y `PresentationMakerUpdater.exe`, instala FFmpeg 7.0.1 y una versión fijada de yt-dlp, crea el acceso directo y borra el entorno de compilación. No cambia Defender, SmartScreen, el firewall ni la política permanente de PowerShell.
 
+## Asistente de IA
+
+El editor incluye `Crear con IA`. Acepta una instrucción y hasta cuatro imágenes PNG, JPG o WebP. El Worker añade el repertorio completo y el estado de las diapositivas, pide un plan estructurado a Vercel AI Gateway y devuelve operaciones que el cliente valida antes de modificar el proyecto.
+
+La clave nunca entra en el ejecutable ni en D1. Configúrala como secret de Cloudflare y despliega el Worker:
+
+```bash
+cd apps/worker
+npx wrangler secret put AI_GATEWAY_API_KEY
+npm run db:migrate
+npm run deploy
+```
+
+El modelo se guarda en D1. El valor inicial es `openai/gpt-5.6-luna`; un administrador puede cambiarlo desde `Usuarios > Modelo` escribiendo cualquier identificador `proveedor/modelo` admitido por Vercel AI Gateway.
+
 ## Compatibilidad de Windows
 
 El ejecutable se compila con Go 1.20.14 y tiene subsistema Windows 6.01, por lo que funciona desde Windows 7 SP1 de 64 bits hasta Windows 11. FFmpeg 7.0.1 fue la última línea de builds de Gyan compatible con Windows 7 y 8.

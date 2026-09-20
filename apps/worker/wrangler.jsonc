@@ -10,6 +10,9 @@
 		"enabled": true,
 		"head_sampling_rate": 1
 	},
+	"secrets": {
+		"required": ["AI_GATEWAY_API_KEY"]
+	},
 	"d1_databases": [
 		{
 			"binding": "DB",
