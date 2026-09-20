@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
-import { ArrowLeft, LogOut, Plus, ShieldCheck } from "lucide-react"
+import { ArrowLeft, Download, LoaderCircle, LogOut, Plus, ShieldCheck } from "lucide-react"
 import { api, ApiError } from "./api"
-import type { ProjectSummary, User } from "./types"
+import type { ProjectSummary, UpdateInfo, User } from "./types"
 import { Editor } from "./Editor"
 
 function navigate(path: string) { history.pushState({}, "", path); dispatchEvent(new PopStateEvent("popstate")) }
@@ -37,13 +37,30 @@ function Home({ user, logout }: { user: User; logout: () => void }) {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [update, setUpdate] = useState<UpdateInfo | null>(null)
+  const [startingUpdate, setStartingUpdate] = useState(false)
   useEffect(() => { api.projects().then(setProjects).catch((e) => setError(e.message)).finally(() => setLoading(false)) }, [])
+  useEffect(() => { api.update().then(setUpdate).catch(() => undefined) }, [])
   async function create() { const project = await api.createProject(); navigate(`/project/${project.id}`) }
+  async function installUpdate() {
+    setStartingUpdate(true); setError("")
+    try {
+      const result = await api.startUpdate()
+      setTimeout(() => { location.href = result.url }, 600)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo abrir el actualizador.")
+      setStartingUpdate(false)
+    }
+  }
   return <main className="home-shell">
     <header className="home-header">
       <div><p className="eyebrow">PRESENTATION MAKER</p><h1>Presentaciones</h1></div>
       <div className="user-actions"><span>{user.username}</span>{user.role === "admin" && <button className="ghost" onClick={() => navigate("/admin")}><ShieldCheck size={17}/> Usuarios</button>}<button className="icon-button" title="Cerrar sesión" onClick={logout}><LogOut size={18}/></button></div>
     </header>
+    {update?.available && <section className="update-notice">
+      <div><span className="update-icon"><Download size={20}/></span><div><strong>Hay una actualización disponible</strong><p>Versión {update.latestVersion}. Tus proyectos y canciones no se modificarán.</p></div></div>
+      <button className="primary" disabled={startingUpdate} onClick={installUpdate}>{startingUpdate ? <LoaderCircle className="spin" size={17}/> : <Download size={17}/>} {startingUpdate ? "Abriendo…" : "Actualizar ahora"}</button>
+    </section>}
     {loading && <p className="status-line">Cargando tus proyectos…</p>}
     {error && <div className="error-box">{error}</div>}
     <section className="project-grid">

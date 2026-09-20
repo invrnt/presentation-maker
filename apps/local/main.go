@@ -43,7 +43,6 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-
 	address := "127.0.0.1:3210"
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
@@ -69,6 +68,7 @@ func main() {
 	}
 	a := &app{db: db, root: root, worker: remote, client: &http.Client{Timeout: 5 * time.Second}, jobs: newJobManager(), frontend: frontend}
 	server := &http.Server{Handler: a.routes(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	go promoteUpdater(root)
 	go func() { time.Sleep(250 * time.Millisecond); openBrowser("http://" + address) }()
 	log.Printf("Presentation Maker %s en http://%s", version, address)
 	if err := server.Serve(listener); !errors.Is(err, http.ErrServerClosed) {

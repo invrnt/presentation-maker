@@ -1,0 +1,42 @@
+name: Publicar release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w apps/web
+      - name: Preparar source.zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_version="${GITHUB_REF_NAME#v}"
+          package_dir="$(mktemp -d)"
+          cp apps/local/*.go apps/local/go.mod apps/local/go.sum apps/local/template.pptx "$package_dir/"
+          cp -R apps/local/updater apps/local/web "$package_dir/"
+          printf '%s\n' "$release_version" > "$package_dir/VERSION"
+          (cd "$package_dir" && zip -q -r "$GITHUB_WORKSPACE/source.zip" .)
+          sha256sum source.zip > source.zip.sha256
+      - name: Crear release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" source.zip source.zip.sha256 install.ps1 --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" source.zip source.zip.sha256 install.ps1 --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+          fi

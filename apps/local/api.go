@@ -98,6 +98,8 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("/api/songs/", a.requireAuth(a.songActionHandler))
 	mux.HandleFunc("/api/jobs/", a.requireAuth(a.jobEventsHandler))
 	mux.HandleFunc("/api/admin/users", a.requireAuth(a.adminUsersHandler))
+	mux.HandleFunc("/api/update", a.requireAuth(a.updateHandler))
+	mux.HandleFunc("/api/update/start", a.requireAuth(a.startUpdateHandler))
 	mux.HandleFunc("/media/assets/", a.requireAuth(a.assetFile))
 	mux.HandleFunc("/media/posters/", a.requireAuth(a.posterFile))
 	mux.HandleFunc("/api/exports/", a.requireAuth(a.exportFile))

@@ -1,6 +1,7 @@
 param(
-    [string]$SourceUrl = "https://raw.githubusercontent.com/invrnt/presentation-maker/0da5a3a8244f3e0c9eda67763b83bb41ad6cbff5/source.zip",
-    [string]$SourceSha256 = "1839b30176401e27b64f70163cb3db16e3fa2ad1c72734311f6c7436f87febc4",
+    [string]$SourceUrl = "https://github.com/invrnt/presentation-maker/releases/latest/download/source.zip",
+    [string]$SourceSha256 = "",
+    [string]$SourceSha256Url = "https://github.com/invrnt/presentation-maker/releases/latest/download/source.zip.sha256",
     [string]$ApiUrl = "https://presentation-maker-api.juan-c.workers.dev"
 )
 
@@ -47,6 +48,13 @@ try {
     Write-Host "[2/5] Compilando la aplicación"
     $SourceZip = Join-Path $WorkDir "source.zip"
     $SourceDir = Join-Path $WorkDir "source"
+    if ([string]::IsNullOrWhiteSpace($SourceSha256)) {
+        $SourceHashFile = Join-Path $WorkDir "source.zip.sha256"
+        $HashClient = New-Object Net.WebClient
+        try { $HashClient.DownloadFile($SourceSha256Url, $SourceHashFile) } finally { $HashClient.Dispose() }
+        $SourceSha256 = ((Get-Content $SourceHashFile | Select-Object -First 1) -split '\s+')[0]
+        if ($SourceSha256 -notmatch '^[a-fA-F0-9]{64}$') { throw "La release no contiene un SHA-256 válido." }
+    }
     Download-Checked $SourceUrl $SourceZip $SourceSha256
     Expand-Zip $SourceZip $SourceDir
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
@@ -54,11 +62,16 @@ try {
     $Previous = Get-Location
     Set-Location $SourceDir
     try {
+        $AppVersion = "1.0.0"
+        $VersionFile = Join-Path $SourceDir "VERSION"
+        if (Test-Path $VersionFile) { $AppVersion = (Get-Content $VersionFile | Select-Object -First 1).Trim() }
         $env:CGO_ENABLED = "0"
         $env:GOOS = "windows"
         $env:GOARCH = "amd64"
-        & $GoExe build -trimpath -ldflags "-s -w -H windowsgui -X main.workerURL=$ApiUrl -X main.version=1.0.0" -o (Join-Path $InstallDir "PresentationMaker.exe") .
+        & $GoExe build -trimpath -ldflags "-s -w -H windowsgui -X main.workerURL=$ApiUrl -X main.version=$AppVersion" -o (Join-Path $InstallDir "PresentationMaker.exe") .
         if ($LASTEXITCODE -ne 0) { throw "Go no pudo compilar la aplicación." }
+        & $GoExe build -trimpath -ldflags "-s -w -H windowsgui -X main.version=$AppVersion" -o (Join-Path $InstallDir "PresentationMakerUpdater.exe") .\updater
+        if ($LASTEXITCODE -ne 0) { throw "Go no pudo compilar el actualizador." }
     } finally { Set-Location $Previous }
 
     Write-Host "[3/5] Instalando herramientas de video"

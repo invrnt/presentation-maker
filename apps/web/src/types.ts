@@ -7,4 +7,4 @@ export type Slide = { id: string; elements: SlideElement[] }
 export type Project = { version: 1; id: string; title: string; slides: Slide[]; updatedAt?: number }
 export type ProjectSummary = { id: string; title: string; document: Project; createdAt: number; updatedAt: number }
 export type Song = { id: string; youtubeId: string; youtubeUrl: string; title: string; durationSeconds?: number; downloaded: boolean; posterUrl?: string }
-
+export type UpdateInfo = { currentVersion: string; latestVersion?: string; available: boolean; notes?: string; publishedAt?: string }

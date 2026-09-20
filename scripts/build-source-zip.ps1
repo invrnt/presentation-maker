@@ -10,6 +10,8 @@ try {
     Copy-Item (Join-Path $Source "go.mod") $Temp
     Copy-Item (Join-Path $Source "go.sum") $Temp
     Copy-Item (Join-Path $Source "template.pptx") $Temp
+    Copy-Item (Join-Path $Source "VERSION") $Temp
+    Copy-Item (Join-Path $Source "updater") $Temp -Recurse
     Copy-Item (Join-Path $Source "web") $Temp -Recurse
     if (Test-Path $Output) { Remove-Item $Output -Force }
     Add-Type -AssemblyName System.IO.Compression.FileSystem

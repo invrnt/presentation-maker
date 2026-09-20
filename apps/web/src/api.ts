@@ -1,4 +1,4 @@
-import type { Project, ProjectSummary, Song, User } from "./types"
+import type { Project, ProjectSummary, Song, UpdateInfo, User } from "./types"
 
 export class ApiError extends Error {
   status: number
@@ -28,5 +28,6 @@ export const api = {
   downloadSong: (id: string) => request<{ jobId: string }>(`/api/songs/${id}/download`, { method: "POST" }),
   exportProject: (id: string) => request<{ url: string; filename: string }>(`/api/projects/${id}/export`, { method: "POST" }),
   createUser: (username: string, password: string, role: string) => request<User>("/api/admin/users", { method: "POST", body: JSON.stringify({ username, password, role }) }),
+  update: () => request<UpdateInfo>("/api/update"),
+  startUpdate: () => request<{ url: string }>("/api/update/start", { method: "POST" }),
 }
-

@@ -64,26 +64,27 @@ npx wrangler dev
 El repositorio público ya contiene el instalador, el `source.zip` y la URL del Worker. En cada equipo abre PowerShell como usuario normal y ejecuta el mismo comando:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$u='https://raw.githubusercontent.com/invrnt/presentation-maker/0bf71211fdec6751db19f184b704d27596e57325/install.ps1';$p=Join-Path $env:TEMP 'presentation-maker-install.ps1';(New-Object Net.WebClient).DownloadFile($u,$p);& $p"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$u='https://github.com/invrnt/presentation-maker/releases/latest/download/install.ps1';$p=Join-Path $env:TEMP 'presentation-maker-install.ps1';(New-Object Net.WebClient).DownloadFile($u,$p);& $p"
 ```
 
 El comando usa `Net.WebClient` para que también funcione con el PowerShell incluido en Windows 7. No hace falta abrir PowerShell como administrador.
 
-El instalador descarga `source.zip` desde GitHub, verifica el SHA-256 fijado, compila el ejecutable con Go 1.20.14, instala las herramientas multimedia, crea el acceso directo y abre la aplicación. En Windows 7 selecciona automáticamente la versión antigua de yt-dlp compatible con ese sistema; en Windows 8, 8.1, 10 y 11 usa la versión posterior fijada.
+El instalador descarga la última release de GitHub, verifica el SHA-256 publicado, compila la aplicación y su actualizador con Go 1.20.14, instala las herramientas multimedia, crea el acceso directo y abre la aplicación. En Windows 7 selecciona automáticamente la versión antigua de yt-dlp compatible con ese sistema; en Windows 8, 8.1, 10 y 11 usa la versión posterior fijada.
 
-Si quieres regenerar una publicación después de cambiar el código:
+## Publicar una actualización
 
-1. Compila el frontend.
-2. Genera `source.zip`.
-3. Sube `source.zip` a la rama `main`.
-4. Copia el SHA-256 nuevo al valor `$SourceSha256` de `install.ps1`.
+La app consulta una sola vez la última GitHub Release al abrir la pantalla de proyectos. Si encuentra una versión mayor, muestra el botón `Actualizar ahora`. El actualizador se abre como un proceso separado, enseña el progreso y reemplaza únicamente `PresentationMaker.exe` y `PresentationMakerUpdater.exe`. No toca `data`, `cache`, `assets`, `exports` ni `bin`.
 
-```powershell
-npm run build -w apps/web
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-source-zip.ps1
+Para publicar una versión nueva, actualiza el código en `main` y crea un tag semántico:
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
-El script descarga Go 1.20.14 en una carpeta temporal, compila `PresentationMaker.exe`, instala FFmpeg 7.0.1 y una versión fijada de yt-dlp, crea el acceso directo y borra el entorno de compilación. No cambia Defender, SmartScreen, el firewall ni la política permanente de PowerShell.
+El workflow `.github/workflows/release.yml` compila el frontend y crea la release con `source.zip`, `source.zip.sha256` e `install.ps1`. La versión del tag se compila dentro del ejecutable. Usa siempre `vMAJOR.MINOR.PATCH` y no reutilices un tag publicado.
+
+El instalador descarga Go 1.20.14 en una carpeta temporal, compila `PresentationMaker.exe` y `PresentationMakerUpdater.exe`, instala FFmpeg 7.0.1 y una versión fijada de yt-dlp, crea el acceso directo y borra el entorno de compilación. No cambia Defender, SmartScreen, el firewall ni la política permanente de PowerShell.
 
 ## Compatibilidad de Windows
 
