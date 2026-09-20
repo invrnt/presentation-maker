@@ -146,4 +146,4 @@ input, select { background: white; border: 1px solid #d5d7d2; border-radius: 9px
 .ai-modal footer { align-items: center; display: flex; gap: 10px; justify-content: flex-end; margin-top: 5px; }
 .ai-modal footer .ghost { padding: 10px 13px; }
 .ai-submit { min-width: 155px; }
-@media (max-height: 760px) { .editor-shell { min-height: 680px; } .editor-body { min-height: 572px; } .workspace { grid-template-rows: minmax(0, 1fr) 142px; } .mini-canvas { height: 76px; width: 135px; } }
+@media (max-height: 760px) { .editor-shell { min-height: 600px; } .editor-body { min-height: 492px; } .workspace { grid-template-rows: minmax(0, 1fr) 126px; } .mini-canvas { height: 68px; width: 121px; } }

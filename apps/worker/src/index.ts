@@ -162,7 +162,7 @@ app.post("/v1/ai/plan", async (c) => {
       type: "text",
       text: `SOLICITUD DEL USUARIO\n${parsed.data.message.trim() || "Interpreta las imágenes adjuntas."}\n\nPROYECTO ACTUAL\n${JSON.stringify(parsed.data.project)}\n\nREPERTORIO DISPONIBLE\n${JSON.stringify(songs)}`,
     },
-    ...parsed.data.images.map((image) => ({ type: "file" as const, mediaType: image.mediaType, data: image.data })),
+    ...parsed.data.images.map((image) => ({ type: "image" as const, mediaType: image.mediaType, image: image.data })),
   ]
 
   const result = await generateText({
