@@ -49,6 +49,8 @@ npx wrangler d1 migrations apply DB --remote
 npm run seed:admin
 ```
 
+Puedes ejecutar `npm run seed:admin` de nuevo con el mismo usuario para restablecer su contraseña.
+
 Guarda la URL que imprime `wrangler deploy`. El instalador la compila dentro del ejecutable local, pero ninguna credencial de Cloudflare entra en la aplicación.
 
 Para trabajar sin tocar la base remota:
