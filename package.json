@@ -1,0 +1,14 @@
+{
+  "name": "presentation-maker",
+  "private": true,
+  "scripts": {
+    "build": "npm run build -w apps/web && npm run check -w apps/worker",
+    "dev": "npm run dev -w apps/web",
+    "worker:dev": "npm run dev -w apps/worker",
+    "worker:deploy": "npm run deploy -w apps/worker",
+    "worker:migrate": "npm run db:migrate -w apps/worker",
+    "seed:admin": "npm run seed:admin -w apps/worker"
+  },
+  "workspaces": ["apps/web", "apps/worker"]
+}
+

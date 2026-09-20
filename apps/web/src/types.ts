@@ -1,0 +1,10 @@
+export type User = { id: string; username: string; role: "admin" | "normal" }
+export type TextElement = { type: "text"; id: string; x: number; y: number; width: number; height: number; text: string; fontFamily: string; fontSize: number; fontWeight: number; color: string; align: "left" | "center" | "right" }
+export type ImageElement = { type: "image"; id: string; assetId: string; url?: string; x: number; y: number; width: number; height: number; fit: "contain" | "cover" }
+export type VideoElement = { type: "video"; id: string; youtubeId: string; title?: string; posterUrl?: string; x: number; y: number; width: number; height: number; fit: "contain" }
+export type SlideElement = TextElement | ImageElement | VideoElement
+export type Slide = { id: string; elements: SlideElement[] }
+export type Project = { version: 1; id: string; title: string; slides: Slide[]; updatedAt?: number }
+export type ProjectSummary = { id: string; title: string; document: Project; createdAt: number; updatedAt: number }
+export type Song = { id: string; youtubeId: string; youtubeUrl: string; title: string; durationSeconds?: number; downloaded: boolean; posterUrl?: string }
+
