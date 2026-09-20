@@ -6,12 +6,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-try {
-    # El valor numérico funciona aunque el .NET antiguo de Windows 7 no exponga Tls12 en el enum.
-    [Net.ServicePointManager]::SecurityProtocol = [Enum]::ToObject([Net.SecurityProtocolType], 3072)
-} catch {
-    throw "No se pudo activar TLS 1.2. Instala las actualizaciones pendientes de Windows 7 y vuelve a intentarlo."
-}
+$WindowsVersion = [Environment]::OSVersion.Version
+if ($WindowsVersion -lt [Version]"6.2") { throw "Presentation Maker requiere Windows 8 o posterior." }
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $InstallDir = Join-Path $env:LOCALAPPDATA "PresentationMaker"
 $WorkDir = Join-Path $env:TEMP ("PresentationMakerInstaller-" + [Guid]::NewGuid().ToString("N"))
@@ -41,36 +38,11 @@ function Download-Checked([string]$Url, [string]$Path, [string]$ExpectedHash) {
 
 function Expand-Zip([string]$Zip, [string]$Destination) {
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-    try {
-        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
-        [IO.Compression.ZipFile]::ExtractToDirectory($Zip, $Destination)
-        return
-    } catch {
-        Write-Host "Usando el extractor compatible con Windows 7"
-    }
-
-    $Shell = New-Object -ComObject Shell.Application
-    $ZipFolder = $Shell.NameSpace($Zip)
-    $DestinationFolder = $Shell.NameSpace($Destination)
-    if (-not $ZipFolder -or -not $DestinationFolder) { throw "Windows no pudo abrir el archivo ZIP." }
-    $DestinationFolder.CopyHere($ZipFolder.Items(), 20)
-
-    $PreviousSize = -1
-    $StableChecks = 0
-    $Deadline = [DateTime]::UtcNow.AddMinutes(10)
-    while ($StableChecks -lt 5) {
-        if ([DateTime]::UtcNow -gt $Deadline) { throw "La extracción del archivo ZIP tardó demasiado." }
-        Start-Sleep -Seconds 1
-        $Files = Get-ChildItem $Destination -Recurse -ErrorAction SilentlyContinue | Where-Object { -not $_.PSIsContainer }
-        $CurrentSize = ($Files | Measure-Object -Property Length -Sum).Sum
-        if ($null -eq $CurrentSize) { $CurrentSize = 0 }
-        if ($CurrentSize -gt 0 -and $CurrentSize -eq $PreviousSize) { $StableChecks++ } else { $StableChecks = 0 }
-        $PreviousSize = $CurrentSize
-    }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::ExtractToDirectory($Zip, $Destination)
 }
 
-$Is64BitOS = ($env:PROCESSOR_ARCHITECTURE -eq "AMD64") -or ($env:PROCESSOR_ARCHITEW6432 -eq "AMD64")
-if (-not $Is64BitOS) { throw "Presentation Maker requiere Windows de 64 bits." }
+if (-not [Environment]::Is64BitOperatingSystem) { throw "Presentation Maker requiere Windows de 64 bits." }
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 
 try {
@@ -125,15 +97,8 @@ try {
     Copy-Item $FfmpegExe.FullName (Join-Path $BinDir "ffmpeg.exe") -Force
     Copy-Item $FfprobeExe.FullName (Join-Path $BinDir "ffprobe.exe") -Force
 
-    $WindowsVersion = [Environment]::OSVersion.Version
-    if ($WindowsVersion.Major -eq 6 -and $WindowsVersion.Minor -eq 1) {
-        $YtUrl = "https://github.com/yt-dlp/yt-dlp/releases/download/2024.10.22/yt-dlp_x86.exe"
-        $YtHash = "ba63c0a53d1f50d1ee1e2e5e87839c5a1321cbeaaf4196003b7aee46c591b364"
-        Write-Warning "Windows 7 usa la última versión oficial compatible de yt-dlp. YouTube puede dejar de admitirla."
-    } else {
-        $YtUrl = "https://github.com/yt-dlp/yt-dlp/releases/download/2025.11.12/yt-dlp.exe"
-        $YtHash = "9f8b03a37125854895a7eebf50a605e34e7ec3bd2444931eff377f3ccec50e96"
-    }
+    $YtUrl = "https://github.com/yt-dlp/yt-dlp/releases/download/2025.11.12/yt-dlp.exe"
+    $YtHash = "9f8b03a37125854895a7eebf50a605e34e7ec3bd2444931eff377f3ccec50e96"
     Download-Checked $YtUrl (Join-Path $BinDir "yt-dlp.exe") $YtHash
 
     Write-Host "[4/5] Creando acceso directo"

@@ -61,17 +61,17 @@ npx wrangler d1 migrations apply DB --local
 npx wrangler dev
 ```
 
-## Instalación en Windows 7, 8, 8.1, 10 y 11
+## Instalación en Windows 8, 8.1, 10 y 11
 
 El repositorio público ya contiene el instalador, el `source.zip` y la URL del Worker. En cada equipo abre PowerShell como usuario normal y ejecuta el mismo comando:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Set-Variable ErrorActionPreference Stop;[Net.ServicePointManager]::SecurityProtocol=[Enum]::ToObject([Net.SecurityProtocolType],3072);(New-Object Net.WebClient).DownloadFile('https://github.com/invrnt/presentation-maker/releases/latest/download/install.ps1',[IO.Path]::Combine([IO.Path]::GetTempPath(),'presentation-maker-install.ps1'));& ([IO.Path]::Combine([IO.Path]::GetTempPath(),'presentation-maker-install.ps1'))"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Set-Variable ErrorActionPreference Stop;if([Environment]::OSVersion.Version -lt [Version]'6.2'){Write-Host 'Presentation Maker requiere Windows 8 o posterior.';exit 1};[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;(New-Object Net.WebClient).DownloadFile('https://github.com/invrnt/presentation-maker/releases/latest/download/install.ps1',[IO.Path]::Combine([IO.Path]::GetTempPath(),'presentation-maker-install.ps1')); & ([IO.Path]::Combine([IO.Path]::GetTempPath(),'presentation-maker-install.ps1'))"
 ```
 
-El comando usa `Net.WebClient` y activa TLS 1.2 explícitamente para el PowerShell de Windows 7. No hace falta abrir PowerShell como administrador. Si Windows 7 sigue cerrando la conexión, instala sus actualizaciones pendientes y comprueba que la fecha y hora sean correctas antes de repetirlo.
+El comando usa `Net.WebClient` y activa TLS 1.2 explícitamente. No hace falta abrir PowerShell como administrador.
 
-El instalador descarga la última release de GitHub, verifica el SHA-256 publicado, compila la aplicación y su actualizador con Go 1.20.14, instala las herramientas multimedia, crea el acceso directo y abre la aplicación. En Windows 7 selecciona automáticamente la versión antigua de yt-dlp compatible con ese sistema; en Windows 8, 8.1, 10 y 11 usa la versión posterior fijada.
+El instalador descarga la última release de GitHub, verifica el SHA-256 publicado, compila la aplicación y su actualizador con Go 1.20.14, instala las herramientas multimedia, crea el acceso directo y abre la aplicación.
 
 ## Publicar una actualización
 
@@ -105,9 +105,7 @@ El modelo se guarda en D1. El valor inicial es `openai/gpt-5.6-luna`; un adminis
 
 ## Compatibilidad de Windows
 
-El ejecutable se compila con Go 1.20.14 y tiene subsistema Windows 6.01, por lo que funciona desde Windows 7 SP1 de 64 bits hasta Windows 11. FFmpeg 7.0.1 fue la última línea de builds de Gyan compatible con Windows 7 y 8.
-
-Hay una limitación inevitable en Windows 7: yt-dlp dejó de admitirlo oficialmente después de `2024.10.22`. El instalador usa esa última versión en Windows 7 y muestra una advertencia. Como YouTube cambia con frecuencia, la descarga de videos puede dejar de funcionar allí. Windows 8, 8.1, 10 y 11 usan una versión posterior fijada y verificada. La edición de proyectos y la exportación con videos ya guardados siguen funcionando sin internet.
+El soporte oficial comienza en Windows 8 de 64 bits y llega hasta Windows 11. El instalador usa Go 1.20.14 porque es la última línea de Go compatible con Windows 8. Windows 7 queda fuera porque sus instalaciones antiguas pueden no admitir la conexión TLS 1.2 que exigen GitHub y los demás servicios de descarga.
 
 ## Archivos locales
 
