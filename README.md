@@ -64,7 +64,7 @@ npx wrangler dev
 El repositorio público ya contiene el instalador, el `source.zip` y la URL del Worker. En cada equipo abre PowerShell como usuario normal y ejecuta el mismo comando:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$u='https://raw.githubusercontent.com/invrnt/presentation-maker/0da5a3a8244f3e0c9eda67763b83bb41ad6cbff5/install.ps1';$p=Join-Path $env:TEMP 'presentation-maker-install.ps1';(New-Object Net.WebClient).DownloadFile($u,$p);& $p"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$u='https://raw.githubusercontent.com/invrnt/presentation-maker/0bf71211fdec6751db19f184b704d27596e57325/install.ps1';$p=Join-Path $env:TEMP 'presentation-maker-install.ps1';(New-Object Net.WebClient).DownloadFile($u,$p);& $p"
 ```
 
 El comando usa `Net.WebClient` para que también funcione con el PowerShell incluido en Windows 7. No hace falta abrir PowerShell como administrador.
