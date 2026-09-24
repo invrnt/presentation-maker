@@ -9,3 +9,5 @@ apps/web/vite.config.d.ts
 apps/local/PresentationMaker
 apps/local/PresentationMaker.exe
 apps/worker/worker-configuration.d.ts
+bots/**/.vian/
+bots/**/.env

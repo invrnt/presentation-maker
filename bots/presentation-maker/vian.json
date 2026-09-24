@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "5c3a0afb-4f1a-4910-a79c-94e96711ddc8",
+  "name": "presentation-maker",
+  "instructions": "./VIAN.md",
+  "tools": "./vian.tools.ts",
+  "model": {
+    "provider": "openai-chatgpt",
+    "id": "gpt-6-luna",
+    "credential": "oauth:openai-chatgpt:default"
+  },
+  "gate": {
+    "type": "telegram",
+    "credential": "env:TELEGRAM_BOT_TOKEN",
+    "access": {
+      "mode": "pairing",
+      "groups": false,
+      "administratorPrincipalIds": []
+    },
+    "telegram": {
+      "streaming": true,
+      "format": "markdown-v2",
+      "buttons": true,
+      "stopGeneration": true
+    }
+  },
+  "runtime": {
+    "maxSteps": 40,
+    "runTimeoutSeconds": 600,
+    "perBotConcurrency": 4,
+    "sameSessionPolicy": "steer"
+  },
+  "context": {
+    "strategy": "summary-tail",
+    "maxRecentMessages": 80
+  },
+  "attachments": {
+    "defaultTtlHours": 24,
+    "maxFileBytes": 52428800
+  },
+  "mcp": []
+}
