@@ -37,6 +37,7 @@ export function env(name: string, fallback = ''): string {
 }
 
 export const BASE_URL = env('PRESENTATION_MAKER_BASE_URL', 'http://127.0.0.1:3210').replace(/\/$/, '');
+export const LINUX_LOCAL = env('PRESENTATION_MAKER_MODE', 'linux') !== 'windows';
 export const WORKER_URL = env('PRESENTATION_MAKER_WORKER_URL', 'http://127.0.0.1:8787').replace(/\/$/, '');
 export const API_USERNAME = env('PRESENTATION_MAKER_USERNAME');
 export const API_PASSWORD = env('PRESENTATION_MAKER_PASSWORD');

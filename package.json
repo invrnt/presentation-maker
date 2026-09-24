@@ -4,6 +4,8 @@
   "scripts": {
     "build": "npm run build -w apps/web && npm run check -w apps/worker",
     "dev": "npm run dev -w apps/web",
+    "linux:build": "cd apps/web && VITE_LOCAL_ONLY=1 ../../node_modules/.bin/vite build --outDir ../linux/web/dist",
+    "linux:serve": "bun apps/linux/server.ts",
     "worker:dev": "npm run dev -w apps/worker",
     "worker:deploy": "npm run deploy -w apps/worker",
     "worker:migrate": "npm run db:migrate -w apps/worker",
@@ -11,4 +13,3 @@
   },
   "workspaces": ["apps/web", "apps/worker"]
 }
-

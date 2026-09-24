@@ -6,6 +6,7 @@ import { uid, useEditor } from "./store"
 import type { AIPlan, AIPlannedText, ImageElement, Project, Slide, SlideElement, Song, TextElement, VideoElement } from "./types"
 
 const WIDTH = 1920, HEIGHT = 1080
+const LOCAL_ONLY = import.meta.env.VITE_LOCAL_ONLY === "1"
 
 function Toolbar({ onImage, onAI }: { onImage: (file: File) => void; onAI: () => void }) {
   const { project, slideId, selectedId, addElement, updateElement, deleteElement } = useEditor()
@@ -14,8 +15,7 @@ function Toolbar({ onImage, onAI }: { onImage: (file: File) => void; onAI: () =>
   const input = useRef<HTMLInputElement>(null)
   const addText = () => addElement({ type: "text", id: uid(), x: 510, y: 420, width: 900, height: 180, text: "Escribe aquí", fontFamily: "Arial", fontSize: 64, fontWeight: 400, color: "#17211b", align: "center" })
   return <div className="editor-toolbar">
-    <button className="ai-tool" onClick={onAI}><Sparkles size={17}/> Crear con IA</button>
-    <span className="tool-divider"/>
+    {!LOCAL_ONLY && <><button className="ai-tool" onClick={onAI}><Sparkles size={17}/> Crear con IA</button><span className="tool-divider"/></>}
     <button onClick={addText}><Type size={17}/> Texto</button>
     <button onClick={() => input.current?.click()}><ImagePlus size={17}/> Imagen</button>
     <input ref={input} hidden type="file" accept="image/png,image/jpeg" onChange={(e) => e.target.files?.[0] && onImage(e.target.files[0])}/>

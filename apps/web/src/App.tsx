@@ -3,6 +3,7 @@ import { ArrowLeft, Download, LoaderCircle, LogOut, Plus, ShieldCheck } from "lu
 import { api, ApiError } from "./api"
 import type { ProjectSummary, UpdateInfo, User } from "./types"
 import { Editor } from "./Editor"
+const LOCAL_ONLY = import.meta.env.VITE_LOCAL_ONLY === "1"
 
 function navigate(path: string) { history.pushState({}, "", path); dispatchEvent(new PopStateEvent("popstate")) }
 
@@ -40,7 +41,7 @@ function Home({ user, logout }: { user: User; logout: () => void }) {
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
   const [startingUpdate, setStartingUpdate] = useState(false)
   useEffect(() => { api.projects().then(setProjects).catch((e) => setError(e.message)).finally(() => setLoading(false)) }, [])
-  useEffect(() => { api.update().then(setUpdate).catch(() => undefined) }, [])
+  useEffect(() => { if (!LOCAL_ONLY) api.update().then(setUpdate).catch(() => undefined) }, [])
   async function create() { const project = await api.createProject(); navigate(`/project/${project.id}`) }
   async function installUpdate() {
     setStartingUpdate(true); setError("")
@@ -55,7 +56,7 @@ function Home({ user, logout }: { user: User; logout: () => void }) {
   return <main className="home-shell">
     <header className="home-header">
       <div><p className="eyebrow">PRESENTATION MAKER</p><h1>Presentaciones</h1></div>
-      <div className="user-actions"><span>{user.username}</span>{user.role === "admin" && <button className="ghost" onClick={() => navigate("/admin")}><ShieldCheck size={17}/> Usuarios</button>}<button className="icon-button" title="Cerrar sesión" onClick={logout}><LogOut size={18}/></button></div>
+      {!LOCAL_ONLY && <div className="user-actions"><span>{user.username}</span>{user.role === "admin" && <button className="ghost" onClick={() => navigate("/admin")}><ShieldCheck size={17}/> Usuarios</button>}<button className="icon-button" title="Cerrar sesión" onClick={logout}><LogOut size={18}/></button></div>}
     </header>
     {update?.available && <section className="update-notice">
       <div><span className="update-icon"><Download size={20}/></span><div><strong>Hay una actualización disponible</strong><p>Versión {update.latestVersion}. Tus proyectos y canciones no se modificarán.</p></div></div>
@@ -87,11 +88,11 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [checking, setChecking] = useState(true)
   useEffect(() => { const change = () => setPath(location.pathname); addEventListener("popstate", change); return () => removeEventListener("popstate", change) }, [])
-  useEffect(() => { api.me().then(setUser).catch((e) => { if (!(e instanceof ApiError) || e.status !== 401) console.error(e); if (location.pathname !== "/login") history.replaceState({}, "", "/login") }).finally(() => { setPath(location.pathname); setChecking(false) }) }, [])
+  useEffect(() => { api.me().then(setUser).catch((e) => { if (!(e instanceof ApiError) || e.status !== 401) console.error(e); if (!LOCAL_ONLY && location.pathname !== "/login") history.replaceState({}, "", "/login") }).finally(() => { setPath(location.pathname); setChecking(false) }) }, [])
   async function logout() { await api.logout().catch(() => undefined); setUser(null); navigate("/login") }
   if (checking) return <main className="splash"><div className="brand-mark">P</div><p>Abriendo tus presentaciones…</p></main>
-  if (!user || path === "/login") return <Login onLogin={setUser}/>
-  if (path === "/admin" && user.role === "admin") return <Admin />
+  if (!user || (!LOCAL_ONLY && path === "/login")) return <Login onLogin={setUser}/>
+  if (!LOCAL_ONLY && path === "/admin" && user.role === "admin") return <Admin />
   const project = path.match(/^\/project\/([^/]+)$/)
   if (project) return <Editor id={project[1]} onBack={() => navigate("/")} />
   return <Home user={user} logout={logout}/>
