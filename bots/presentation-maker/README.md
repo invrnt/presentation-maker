@@ -1,7 +1,7 @@
 # Vian bot: presentation-maker
 
 Telegram bot that creates and exports Presentation Maker decks from this repo.
-Requires Vian v0.1.0-preview.3 or newer for portable bot-root resolution.
+Requires Vian v0.1.0-preview.4 or newer for the current bot state schema and portable bot-root resolution.
 
 ## Layout
 
