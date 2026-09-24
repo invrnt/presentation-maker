@@ -9,37 +9,26 @@ Requires Vian v0.1.0-preview.3 or newer for portable bot-root resolution.
 | --- | --- |
 | `vian.json` | Provider/model, Telegram gate, runtime limits |
 | `VIAN.md` | Bot instructions (Spanish) |
-| `vian.tools.ts` | Trusted tools → local Go API + Worker |
+| `vian.tools.ts` | Trusted tools → local Bun API (or previous Go/Worker path in Windows mode) |
 | `lib/` | API client, backend bootstrap, plan/song helpers; Vian supplies the bot root when loading tools |
-| `.env` | Secrets (gitignored): Telegram token + app login |
+| `.env` | Secrets (gitignored): Telegram token; app login only in Windows mode |
 
 ## Tools
 
-- `ensure_backend` / `backend_status` — start/check Worker (`:8787`) + Go server (`:3210`) + login
+- `ensure_backend` / `backend_status` — start/check Bun server (`:3210`)
 - `list_projects`, `create_project`, `get_project`, `save_project`, `set_project_title`, `add_slide`
 - `list_songs`, `prepare_song` — YouTube import + download until ready
 - `upload_image` — bot attachment id → `POST /api/assets`
-- `ai_generate_slides` — app AI planner (`/api/ai/plan`) + apply plan + save
+- `ai_generate_slides` — available only in the previous Windows/Worker mode
 - `export_presentation` — PPTX export → Vian attachment for `send_attachment`
 
 Built-in Vian tools also available: `list_attachments`, `send_attachment`.
 
 ## Local stack
 
-App login and Telegram credentials live in this bot's `.env` (`PRESENTATION_MAKER_USERNAME`, `PRESENTATION_MAKER_PASSWORD`, `TELEGRAM_BOT_TOKEN`). The app's `AI_GATEWAY_API_KEY` can live in the repository root `.env`. Both files stay local.
-`ensure_backend` starts:
+The bot defaults to Linux local mode. Install Bun and the system tools, then run `npm ci && npm run linux:build` from the repository root. `ensure_backend` starts `bun apps/linux/server.ts`. Set `PRESENTATION_MAKER_DATA_DIR` to select the same database as a manually started server. Only the Telegram credential is needed in the bot `.env`; app login and Worker credentials are not used.
 
-1. `npx wrangler dev` in `apps/worker` with `AI_GATEWAY_API_KEY`
-2. `go run .` in `apps/local` with `PRESENTATION_MAKER_API_URL=http://127.0.0.1:8787`
-
-Manual:
-
-```bash
-cd apps/worker && npx wrangler d1 migrations apply DB --local && npx wrangler dev
-cd apps/local && PRESENTATION_MAKER_API_URL=http://127.0.0.1:8787 go run .
-```
-
-Seed admin (interactive): `npm run seed:admin -- --local`
+To use the previous Worker/Go stack, set `PRESENTATION_MAKER_MODE=windows` and retain its login and Worker configuration. See the root README for that stack.
 
 ## Vian commands
 

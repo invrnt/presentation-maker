@@ -1,5 +1,7 @@
 # Presentation Maker
 
+**Linux local edition:** see [apps/linux/README.md](apps/linux/README.md) for the Bun + SQLite server, system video tools, build and run commands. The instructions below describe the existing Windows/Go/Cloudflare edition.
+
 Aplicación privada para crear presentaciones con texto, imágenes y videos de YouTube guardados dentro del archivo PPTX. La interfaz está en español, los proyectos se guardan en el equipo y el servidor local solo escucha en `127.0.0.1`.
 
 ## Qué incluye

@@ -1,4 +1,4 @@
-import { API_PASSWORD, API_USERNAME, BASE_URL } from './config.ts';
+import { API_PASSWORD, API_USERNAME, BASE_URL, LINUX_LOCAL } from './config.ts';
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -43,6 +43,7 @@ export async function me(): Promise<{ id: string; username: string; role: string
 }
 
 export async function ensureLogin(signal?: AbortSignal): Promise<{ username: string; role: string }> {
+  if (LINUX_LOCAL) return { username: 'Local', role: 'normal' };
   try {
     const user = await me();
     return { username: user.username, role: user.role };

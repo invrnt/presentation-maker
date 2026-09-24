@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync } from 'node:fs';
 import { join } from 'node:path';
-import { AI_GATEWAY_API_KEY, BASE_URL, BOT_ROOT, LOG_DIR, REPO_ROOT, WORKER_URL } from './config.ts';
+import { AI_GATEWAY_API_KEY, BASE_URL, BOT_ROOT, LINUX_LOCAL, LOG_DIR, REPO_ROOT, WORKER_URL } from './config.ts';
 import { ensureLogin, health } from './api.ts';
 
 async function workerHealthy(): Promise<boolean> {
@@ -37,6 +37,28 @@ function spawnDetached(command: string, args: string[], cwd: string, logFile: st
 }
 
 export async function ensureBackend(signal: AbortSignal): Promise<Record<string, unknown>> {
+  if (LINUX_LOCAL) {
+    const details: Record<string, unknown> = { base: BASE_URL, mode: 'linux-local' };
+    let local = await health();
+    if (local.ok && local.version !== 'linux-bun-1') return { ...details, ready: false, backendError: 'El puerto pertenece a otro backend. Usa PRESENTATION_MAKER_PORT o detén el proceso anterior.' };
+    if (!local.ok) {
+      const log = join(LOG_DIR, 'backend.log');
+      spawnDetached('bun', ['apps/linux/server.ts'], REPO_ROOT, log, {
+        PRESENTATION_MAKER_DATA_DIR: process.env.PRESENTATION_MAKER_DATA_DIR ?? '',
+        PRESENTATION_MAKER_PORT: new URL(BASE_URL).port || '3210',
+      });
+      for (let i = 0; i < 60 && !local.ok; i++) {
+        if (signal.aborted) break;
+        await sleep(500);
+        local = await health();
+      }
+      details.backendLog = log;
+    }
+    details.ready = local.ok && local.version === 'linux-bun-1';
+    details.version = local.version;
+    if (!details.ready) details.backendError = local.error || 'El servidor Bun no quedó listo.';
+    return details;
+  }
   const details: Record<string, unknown> = { base: BASE_URL, worker: WORKER_URL };
 
   let worker = await workerHealthy();

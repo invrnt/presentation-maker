@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, normalize, resolve, sep } from 'node:path';
-import { ATTACHMENTS_DIR } from './lib/config.ts';
+import { ATTACHMENTS_DIR, LINUX_LOCAL } from './lib/config.ts';
 import {
   aiPlan,
   createProject,
@@ -91,7 +91,7 @@ async function withBackend<T>(signal: AbortSignal, fn: (signal: AbortSignal) => 
 export default {
   ensure_backend: {
     description:
-      'Arranca y valida el stack local de Presentation Maker (Worker + servidor Go + login). Úsala antes de cualquier otra operación.',
+      'Arranca y valida el servidor local de Presentation Maker. Úsala antes de cualquier otra operación.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     async execute(_input: object, ctx: Ctx) {
       const status = await ensureBackend(ctx.abortSignal);
@@ -383,7 +383,7 @@ export default {
     },
   },
 
-  ai_generate_slides: {
+  ...(!LINUX_LOCAL ? { ai_generate_slides: {
     description:
       'Usa el planificador IA de la app (Crear con IA) y aplica el plan al proyecto: inserta diapositivas, textos y videos. Devuelve el documento guardado.',
     inputSchema: {
@@ -462,7 +462,7 @@ export default {
         };
       });
     },
-  },
+  }} : {}),
 
   export_presentation: {
     description:
