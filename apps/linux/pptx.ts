@@ -30,7 +30,7 @@ export async function exportPptx(doc: any, db: Database, root: string, target: s
   if (!Array.isArray(doc.slides) || !doc.slides.length) throw new Error('La presentación no tiene diapositivas.');
   const temp = await mkdtemp(join(tmpdir(), 'pm-pptx-'));
   try {
-    await run(['unzip','-q',resolve(import.meta.dir,'../local/template.pptx'),'-d',temp]);
+    await run(['unzip','-q',resolve(process.env.PRESENTATION_MAKER_TEMPLATE || resolve(import.meta.dir,'../local/template.pptx')),'-d',temp]);
     await rm(join(temp,'ppt/slides'), { recursive:true, force:true });
     await mkdir(join(temp,'ppt/slides/_rels'), { recursive:true });
     await mkdir(join(temp,'ppt/media'), { recursive:true });

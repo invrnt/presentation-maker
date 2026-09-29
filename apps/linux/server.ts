@@ -11,7 +11,21 @@ db.run('PRAGMA journal_mode=WAL');
 db.run('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, title TEXT NOT NULL, document TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)');
 db.run('CREATE TABLE IF NOT EXISTS songs (id TEXT PRIMARY KEY, youtube_url TEXT NOT NULL, title TEXT NOT NULL, duration INTEGER NOT NULL DEFAULT 0)');
 db.run('CREATE TABLE IF NOT EXISTS media (youtube_id TEXT PRIMARY KEY, path TEXT NOT NULL, poster TEXT NOT NULL)');
-const jobs = new Map<string, { message: string; error: string; done: boolean }>();
+db.run('CREATE TABLE IF NOT EXISTS download_jobs (id TEXT PRIMARY KEY, youtube_id TEXT NOT NULL, message TEXT NOT NULL, error TEXT NOT NULL, done INTEGER NOT NULL, created_at INTEGER NOT NULL)');
+// A restart cannot resume an interrupted ffmpeg/yt-dlp process; report the interruption explicitly.
+db.run("UPDATE download_jobs SET message='Interrumpida', error='El servicio se reinició durante la descarga.', done=1 WHERE done=0");
+db.query('DELETE FROM download_jobs WHERE done=1 AND created_at<?').run(Date.now() - 7 * 24 * 60 * 60_000);
+const activeDownloads = new Map<string, string>();
+type Job = { message: string; error: string; done: boolean };
+function getJob(jobId: string): Job | null {
+  const row = db.query('SELECT message,error,done FROM download_jobs WHERE id=?').get(jobId) as Job | null;
+  return row ? { message: row.message, error: row.error, done: Boolean(row.done) } : null;
+}
+function updateJob(jobId: string, patch: Partial<Job>) {
+  const current = getJob(jobId)!;
+  const next = { ...current, ...patch };
+  db.query('UPDATE download_jobs SET message=?,error=?,done=? WHERE id=?').run(next.message, next.error, Number(next.done), jobId);
+}
 const id = () => crypto.randomUUID().replaceAll('-', '');
 const validId = (s: string) => /^[a-zA-Z0-9_-]{1,64}$/.test(s);
 const json = (value: unknown, status = 200) => Response.json(value, { status });
@@ -37,14 +51,13 @@ async function command(args: string[], timeout = 120_000): Promise<string> {
   return out;
 }
 async function download(youtubeId: string, url: string, jobId: string) {
-  const job = jobs.get(jobId)!;
   const base = join(root, 'cache/media', youtubeId);
   const temporary = `${base}.download.mp4`;
   const output = `${base}.mp4`;
   try {
-    job.message = 'Descargando video…';
+    updateJob(jobId, { message: 'Descargando video…' });
     await command(['yt-dlp', '--no-playlist', '--no-progress', '--retries', '5', '--fragment-retries', '5', '-f', 'bv*[height<=?1080]+ba/b[height<=?1080]/18/b', '-S', 'res:1080,vcodec:h264,acodec:aac', '--merge-output-format', 'mp4', '-o', temporary, '--', url], 20 * 60_000);
-    job.message = 'Preparando MP4…';
+    updateJob(jobId, { message: 'Preparando MP4…' });
     const info = JSON.parse(await command(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_name,codec_type', '-of', 'json', temporary]));
     const codecs = Object.fromEntries(info.streams.map((s: any) => [s.codec_type, s.codec_name]));
     const compatible = codecs.video === 'h264' && (!codecs.audio || codecs.audio === 'aac');
@@ -54,14 +67,17 @@ async function download(youtubeId: string, url: string, jobId: string) {
     const poster = join(root, 'cache/thumbnails', `${youtubeId}.jpg`);
     await command(['ffmpeg', '-y', '-ss', '1', '-i', output, '-frames:v', '1', '-q:v', '3', poster]).catch(() => '');
     db.query('INSERT OR REPLACE INTO media VALUES (?,?,?)').run(youtubeId, output, existsSync(poster) ? poster : '');
-    job.message = 'Listo'; job.done = true;
+    updateJob(jobId, { message: 'Listo', done: true });
   } catch (e) {
-    job.error = e instanceof Error ? e.message : String(e); job.done = true;
-  } finally { await rm(temporary, { force: true }); await rm(`${base}.converted.mp4`, { force: true }); }
+    updateJob(jobId, { error: e instanceof Error ? e.message : String(e), done: true });
+  } finally {
+    activeDownloads.delete(youtubeId);
+    await rm(temporary, { force: true }); await rm(`${base}.converted.mp4`, { force: true });
+  }
 }
 export async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url), path = url.pathname, method = req.method;
-  if (path === '/api/health') return json({ ok: true, version: 'linux-bun-1', mode: 'linux-local' });
+  if (path === '/api/health') return json({ ok: true, version: process.env.PRESENTATION_MAKER_HEADLESS === '1' ? 'headless-bun-1' : 'linux-bun-1', mode: 'linux-local' });
   if (path === '/api/auth/me') return json({ id: 'local', username: 'Local', role: 'normal' });
   if (path === '/api/projects' && method === 'GET') return json(db.query('SELECT * FROM projects ORDER BY updated_at DESC').all().map(rowToProject));
   if (path === '/api/projects' && method === 'POST') {
@@ -77,7 +93,7 @@ export async function handle(req: Request): Promise<Response> {
     if (project[2] === 'export' && method === 'POST') {
       try {
         const doc = JSON.parse(row.document);
-        const filename = `${doc.title.replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 90) || 'Presentacion'}.pptx`;
+        const filename = `${doc.title.replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 70) || 'Presentacion'}-${id()}.pptx`;
         await exportPptx(doc, db, root, join(root, 'exports', filename));
         return json({ url: `/api/exports/${encodeURIComponent(filename)}`, filename });
       } catch (e) { return error(e instanceof Error ? e.message : String(e), 409); }
@@ -112,19 +128,22 @@ export async function handle(req: Request): Promise<Response> {
   if (action && method === 'POST' && validId(action[1])) {
     const song: any = db.query('SELECT * FROM songs WHERE id=?').get(action[1]);
     if (!song) return error('No encontramos esa canción.', 404);
-    const jobId = id(); jobs.set(jobId, { message: 'En cola…', error: '', done: false });
-    if (songs().find((s: any) => s.id === song.id)?.downloaded) { jobs.get(jobId)!.done = true; jobs.get(jobId)!.message = 'Listo'; }
-    else void download(song.id, song.youtube_url, jobId);
+    const existing = activeDownloads.get(song.id);
+    if (existing) return json({ jobId: existing }, 202);
+    const jobId = id();
+    db.query('INSERT INTO download_jobs VALUES (?,?,?,?,?,?)').run(jobId, song.id, 'En cola…', '', 0, Date.now());
+    if (songs().find((s: any) => s.id === song.id)?.downloaded) updateJob(jobId, { done: true, message: 'Listo' });
+    else { activeDownloads.set(song.id, jobId); void download(song.id, song.youtube_url, jobId); }
     return json({ jobId }, 202);
   }
   const events = /^\/api\/jobs\/([^/]+)\/events$/.exec(path);
   if (events && validId(events[1])) {
-    if (!jobs.has(events[1])) return error('Descarga no encontrada.', 404);
+    if (!getJob(events[1])) return error('Descarga no encontrada.', 404);
     return new Response(new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
         for (let i=0; i<1200; i++) {
-          const job = jobs.get(events[1])!;
+          const job = getJob(events[1])!;
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(job)}\n\n`));
           if (job.done) break;
           await Bun.sleep(1000);
@@ -140,7 +159,7 @@ export async function handle(req: Request): Promise<Response> {
       return new Response(Bun.file(file), { headers: dir === 'exports' ? { 'Content-Disposition': `attachment; filename="${basename(file)}"` } : {} });
     }
   }
-  if (path.startsWith('/api/') || path.startsWith('/media/')) return error('Ruta no disponible.', 404);
+  if (path.startsWith('/api/') || path.startsWith('/media/') || process.env.PRESENTATION_MAKER_HEADLESS === '1') return error('Ruta no disponible.', 404);
   const dist = resolve(import.meta.dir, 'web/dist');
   const staticPath = resolve(dist, '.' + path);
   if (staticPath.startsWith(dist + '/') && existsSync(staticPath)) return new Response(Bun.file(staticPath));

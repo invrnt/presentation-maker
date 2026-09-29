@@ -26,7 +26,7 @@ Built-in Vian tools also available: `list_attachments`, `send_attachment`.
 
 ## Local stack
 
-The bot defaults to Linux local mode. Install Bun and the system tools, then run `npm ci && npm run linux:build` from the repository root. `ensure_backend` starts `bun apps/linux/server.ts`. Set `PRESENTATION_MAKER_DATA_DIR` to select the same database as a manually started server. Only the Telegram credential is needed in the bot `.env`; app login and Worker credentials are not used.
+The bot defaults to Linux local mode. For a dedicated Debian machine, use the minimal headless package and user service described in [apps/backend/README.md](../../apps/backend/README.md). It installs only the backend and this bot, without the editor or npm. `ensure_backend` checks the service and starts the bundled backend if needed. From a source checkout, install Bun and the system tools; `ensure_backend` starts `bun apps/linux/server.ts` in headless mode. Set `PRESENTATION_MAKER_DATA_DIR` to select the same database as a manually started server. Only the Telegram credential is needed in the bot `.env`; app login and Worker credentials are not used.
 
 To use the previous Worker/Go stack, set `PRESENTATION_MAKER_MODE=windows` and retain its login and Worker configuration. See the root README for that stack.
 

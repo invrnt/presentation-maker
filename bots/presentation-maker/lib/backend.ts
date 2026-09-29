@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { closeSync, mkdirSync, openSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
 import { join } from 'node:path';
 import { AI_GATEWAY_API_KEY, BASE_URL, BOT_ROOT, LINUX_LOCAL, LOG_DIR, REPO_ROOT, WORKER_URL } from './config.ts';
 import { ensureLogin, health } from './api.ts';
@@ -40,12 +40,15 @@ export async function ensureBackend(signal: AbortSignal): Promise<Record<string,
   if (LINUX_LOCAL) {
     const details: Record<string, unknown> = { base: BASE_URL, mode: 'linux-local' };
     let local = await health();
-    if (local.ok && local.version !== 'linux-bun-1') return { ...details, ready: false, backendError: 'El puerto pertenece a otro backend. Usa PRESENTATION_MAKER_PORT o detén el proceso anterior.' };
+    if (local.ok && !['linux-bun-1', 'headless-bun-1'].includes(local.version || '')) return { ...details, ready: false, backendError: 'El puerto pertenece a otro backend. Usa PRESENTATION_MAKER_PORT o detén el proceso anterior.' };
     if (!local.ok) {
       const log = join(LOG_DIR, 'backend.log');
-      spawnDetached('bun', ['apps/linux/server.ts'], REPO_ROOT, log, {
+      const headless = join(REPO_ROOT, 'apps', 'backend', 'server.js');
+      spawnDetached('bun', [existsSync(headless) ? headless : join(REPO_ROOT, 'apps', 'linux', 'server.ts')], REPO_ROOT, log, {
         PRESENTATION_MAKER_DATA_DIR: process.env.PRESENTATION_MAKER_DATA_DIR ?? '',
         PRESENTATION_MAKER_PORT: new URL(BASE_URL).port || '3210',
+        PRESENTATION_MAKER_HEADLESS: '1',
+        PRESENTATION_MAKER_TEMPLATE: existsSync(headless) ? join(REPO_ROOT, 'apps', 'backend', 'template.pptx') : '',
       });
       for (let i = 0; i < 60 && !local.ok; i++) {
         if (signal.aborted) break;
@@ -54,7 +57,7 @@ export async function ensureBackend(signal: AbortSignal): Promise<Record<string,
       }
       details.backendLog = log;
     }
-    details.ready = local.ok && local.version === 'linux-bun-1';
+    details.ready = local.ok && ['linux-bun-1', 'headless-bun-1'].includes(local.version || '');
     details.version = local.version;
     if (!details.ready) details.backendError = local.error || 'El servidor Bun no quedó listo.';
     return details;

@@ -22,6 +22,9 @@ test('local projects persist and export a valid PPTX without remote calls', asyn
   expect(file.status).toBe(200);
   const bytes = new Uint8Array(await file.arrayBuffer());
   expect(bytes[0]).toBe(0x50); expect(bytes[1]).toBe(0x4b);
+  const second = await request(`/api/projects/${doc.id}/export`, 'POST').then(r => r.json());
+  expect(second.url).not.toBe(result.url);
+  expect((await request(result.url)).status).toBe(200);
   expect((await request('/api/projects').then(r => r.json())).length).toBe(1);
   await rm(data, { recursive: true, force: true });
 });
@@ -30,4 +33,15 @@ test('blocks remote endpoints and invalid media paths', async () => {
   expect((await request('/api/ai/plan', 'POST')).status).toBe(404);
   expect((await request('/api/admin/users', 'POST')).status).toBe(404);
   expect((await request('/media/assets/..%2Fnope')).status).toBe(404);
+});
+
+test('headless mode exposes the API but no editor', async () => {
+  process.env.PRESENTATION_MAKER_HEADLESS = '1';
+  try {
+    expect((await request('/api/health').then(r => r.json())).version).toBe('headless-bun-1');
+    expect((await request('/')).status).toBe(404);
+    expect((await request('/index.html')).status).toBe(404);
+  } finally {
+    delete process.env.PRESENTATION_MAKER_HEADLESS;
+  }
 });

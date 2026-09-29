@@ -9,6 +9,7 @@ apps/web/vite.config.d.ts
 apps/local/PresentationMaker
 apps/local/PresentationMaker.exe
 apps/linux/web/dist/
+presentation-maker-vian-debian.tar.gz
 apps/worker/worker-configuration.d.ts
 bots/**/.vian/
 bots/**/.env

@@ -1,5 +1,7 @@
 # Presentation Maker on Linux
 
+For a Debian bot-only deployment without the editor, see [apps/backend/README.md](../backend/README.md).
+
 This is the local Linux server. It uses Bun and a SQLite database. It serves the existing editor in a Linux build that hides login, account management, updates and app AI. It makes no Cloudflare Worker or AI API calls. The Windows Go application remains at `apps/local`.
 
 ## Run
