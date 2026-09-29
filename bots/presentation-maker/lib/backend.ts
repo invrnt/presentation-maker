@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { AI_GATEWAY_API_KEY, BASE_URL, BOT_ROOT, LINUX_LOCAL, LOG_DIR, REPO_ROOT, WORKER_URL } from './config.ts';
 import { ensureLogin, health } from './api.ts';
 
@@ -49,6 +49,7 @@ export async function ensureBackend(signal: AbortSignal): Promise<Record<string,
         PRESENTATION_MAKER_PORT: new URL(BASE_URL).port || '3210',
         PRESENTATION_MAKER_HEADLESS: '1',
         PRESENTATION_MAKER_TEMPLATE: existsSync(headless) ? join(REPO_ROOT, 'apps', 'backend', 'template.pptx') : '',
+        PATH: `${join(REPO_ROOT, 'bin')}${delimiter}${process.env.PATH || ''}`,
       });
       for (let i = 0; i < 60 && !local.ok; i++) {
         if (signal.aborted) break;

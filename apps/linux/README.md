@@ -6,7 +6,7 @@ This is the local Linux server. It uses Bun and a SQLite database. It serves the
 
 ## Run
 
-Install Bun 1.4 or newer, Node.js/npm for building the editor, and `yt-dlp`, `ffmpeg` (including `ffprobe` and an H.264 encoder), `zip`, and `unzip` from your distro. On Debian, install the system tools with `sudo apt install ffmpeg yt-dlp zip unzip`. If Debian's `yt-dlp` is too old for current YouTube behavior, install a current upstream build using [yt-dlp's official installation instructions](https://github.com/yt-dlp/yt-dlp/wiki/Installation). YouTube extraction changes over time.
+Install Bun 1.4 or newer, Node.js/npm for building the editor, and `ffmpeg` (including `ffprobe` and an H.264 encoder), `zip`, and `unzip` from your distro. YouTube extraction also needs a current stable official `yt-dlp` executable and Deno 2.3 or newer. The [headless Debian installer](../backend/README.md) downloads and verifies both automatically. For a source checkout, follow the official [yt-dlp installation guide](https://github.com/yt-dlp/yt-dlp/wiki/Installation) and [EJS guide](https://github.com/yt-dlp/yt-dlp/wiki/EJS); distro `yt-dlp` packages may lag behind YouTube changes.
 
 ```bash
 npm ci
@@ -16,7 +16,7 @@ npm run linux:serve
 
 Open `http://127.0.0.1:3210`. The server binds only to loopback. Data defaults to `~/.local/share/presentation-maker-linux/` and can be moved with `PRESENTATION_MAKER_DATA_DIR`. Change the port with `PRESENTATION_MAKER_PORT`. The Linux database is separate from the Windows database; there is no migration/import tool yet.
 
-YouTube import uses the system `yt-dlp` for metadata. Download uses `yt-dlp`, `ffprobe`, and `ffmpeg` to produce H.264/AAC MP4 for PowerPoint, with files cached locally. Download only videos you own or are permitted to use. A network connection and a working YouTube extractor are needed for import and first download; cached videos and projects remain local.
+YouTube import uses `yt-dlp` for metadata. Download uses `yt-dlp`, Deno, `ffprobe`, and `ffmpeg` to produce H.264/AAC MP4 for PowerPoint, with files cached locally. Download only videos you own or are permitted to use. A network connection and a working YouTube extractor are needed for import and first download; cached videos and projects remain local.
 
 ## Vian bot
 

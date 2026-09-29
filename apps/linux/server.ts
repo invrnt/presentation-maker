@@ -52,11 +52,12 @@ async function command(args: string[], timeout = 120_000): Promise<string> {
 }
 async function download(youtubeId: string, url: string, jobId: string) {
   const base = join(root, 'cache/media', youtubeId);
-  const temporary = `${base}.download.mp4`;
+  let temporary = '';
   const output = `${base}.mp4`;
   try {
     updateJob(jobId, { message: 'Descargando video…' });
-    await command(['yt-dlp', '--no-playlist', '--no-progress', '--retries', '5', '--fragment-retries', '5', '-f', 'bv*[height<=?1080]+ba/b[height<=?1080]/18/b', '-S', 'res:1080,vcodec:h264,acodec:aac', '--merge-output-format', 'mp4', '-o', temporary, '--', url], 20 * 60_000);
+    temporary = (await command(['yt-dlp', '--ignore-config', '--no-playlist', '--no-progress', '--no-simulate', '--print', 'after_move:filepath', '--retries', '5', '--fragment-retries', '5', '-f', 'bv*[height<=?1080]+ba/b[height<=?1080]/18/b', '-S', 'res:1080,vcodec:h264,acodec:aac', '--merge-output-format', 'mkv', '-o', `${base}.download.%(ext)s`, '--', url], 20 * 60_000)).trim();
+    if (!temporary.startsWith(`${base}.download.`) || !existsSync(temporary)) throw new Error('yt-dlp no devolvió el archivo descargado.');
     updateJob(jobId, { message: 'Preparando MP4…' });
     const info = JSON.parse(await command(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_name,codec_type', '-of', 'json', temporary]));
     const codecs = Object.fromEntries(info.streams.map((s: any) => [s.codec_type, s.codec_name]));
@@ -72,7 +73,8 @@ async function download(youtubeId: string, url: string, jobId: string) {
     updateJob(jobId, { error: e instanceof Error ? e.message : String(e), done: true });
   } finally {
     activeDownloads.delete(youtubeId);
-    await rm(temporary, { force: true }); await rm(`${base}.converted.mp4`, { force: true });
+    if (temporary) await rm(temporary, { force: true });
+    await rm(`${base}.converted.mp4`, { force: true });
   }
 }
 export async function handle(req: Request): Promise<Response> {
@@ -118,7 +120,7 @@ export async function handle(req: Request): Promise<Response> {
     const input = await body(req), link = youtubeUrl(input?.url);
     if (!link) return error('Pega un enlace válido de YouTube.');
     try {
-      const meta = JSON.parse(await command(['yt-dlp', '--dump-single-json', '--skip-download', '--no-playlist', '--no-colors', '--', link]));
+      const meta = JSON.parse(await command(['yt-dlp', '--ignore-config', '--dump-single-json', '--skip-download', '--no-playlist', '--no-colors', '--', link]));
       if (!/^[A-Za-z0-9_-]{6,20}$/.test(meta.id)) return error('YouTube devolvió información inválida.', 502);
       db.query('INSERT INTO songs VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,duration=excluded.duration').run(meta.id, link, meta.title || meta.id, Math.floor(meta.duration || 0));
       return json(songs().find((s: any) => s.id === meta.id), 201);

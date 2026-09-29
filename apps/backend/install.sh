@@ -8,9 +8,37 @@ command -v bun >/dev/null || { echo 'Instala Bun (https://bun.com/docs/installat
 command -v systemctl >/dev/null || { echo 'Se necesita systemd con sesión de usuario.' >&2; exit 1; }
 if command -v apt-get >/dev/null; then
   sudo apt-get update
-  sudo apt-get install -y ffmpeg yt-dlp zip unzip
+  sudo apt-get install -y ca-certificates curl ffmpeg python3 zip unzip
 fi
-mkdir -p "$target/apps/backend" "$target/bots/presentation-maker/lib" "$HOME/.config/systemd/user"
+case "$(uname -m)" in
+  x86_64) yt_asset=yt-dlp_linux; deno_asset=deno-x86_64-unknown-linux-gnu.zip ;;
+  aarch64) yt_asset=yt-dlp_linux_aarch64; deno_asset=deno-aarch64-unknown-linux-gnu.zip ;;
+  *) echo 'Solo se admiten Debian x86_64 y aarch64.' >&2; exit 1 ;;
+esac
+mkdir -p "$target/apps/backend" "$target/bots/presentation-maker/lib" "$target/bin" "$HOME/.config/systemd/user"
+download_dir="$(mktemp -d)"
+trap 'rm -rf "$download_dir"' EXIT
+download_verified() {
+  local url="$1" asset="$2" sums="$3" expected
+  curl -fLSs --retry 3 "$url/$asset" -o "$download_dir/$asset"
+  curl -fLSs --retry 3 "$url/$sums" -o "$download_dir/$sums"
+  expected="$(awk -v name="$asset" '$2 == name { print $1 }' "$download_dir/$sums")"
+  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || { echo "Falta checksum de $asset" >&2; exit 1; }
+  (cd "$download_dir" && printf '%s  %s\n' "$expected" "$asset" | sha256sum -c -)
+}
+latest_tag() {
+  curl -fLSs --retry 3 "https://api.github.com/repos/$1/releases/latest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])'
+}
+yt_version="$(latest_tag yt-dlp/yt-dlp)"
+download_verified "https://github.com/yt-dlp/yt-dlp/releases/download/$yt_version" "$yt_asset" SHA2-256SUMS
+install -m 0755 "$download_dir/$yt_asset" "$target/bin/.yt-dlp.new"
+mv -f "$target/bin/.yt-dlp.new" "$target/bin/yt-dlp"
+deno_version="$(latest_tag denoland/deno)"
+download_verified "https://github.com/denoland/deno/releases/download/$deno_version" "$deno_asset" "$deno_asset.sha256sum"
+unzip -oq "$download_dir/$deno_asset" deno -d "$download_dir"
+install -m 0755 "$download_dir/deno" "$target/bin/.deno.new"
+mv -f "$target/bin/.deno.new" "$target/bin/deno"
+echo "yt-dlp: $("$target/bin/yt-dlp" --version); Deno: $("$target/bin/deno" --version | head -1)"
 cp "$source_dir/apps/backend/server.js" "$source_dir/apps/backend/template.pptx" "$source_dir/apps/backend/README.md" "$target/apps/backend/"
 cp "$source_dir/bots/presentation-maker/vian.tools.ts" "$source_dir/bots/presentation-maker/VIAN.md" "$source_dir/bots/presentation-maker/README.md" "$target/bots/presentation-maker/"
 cp "$source_dir/bots/presentation-maker/lib/"*.ts "$target/bots/presentation-maker/lib/"
@@ -27,6 +55,7 @@ Type=simple
 Environment=PRESENTATION_MAKER_HEADLESS=1
 Environment=PRESENTATION_MAKER_TEMPLATE=$target/apps/backend/template.pptx
 Environment=PRESENTATION_MAKER_DATA_DIR=%h/.local/share/presentation-maker-linux
+Environment=PATH=$target/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=$(command -v bun) $target/apps/backend/server.js
 Restart=on-failure
 RestartSec=5
