@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" != update || $# != 1 ]]; then
+  echo 'Uso: presentation-maker update' >&2
+  exit 2
+fi
+
+script_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+target="${PRESENTATION_MAKER_INSTALL_DIR:-$HOME/.local/share/presentation-maker-vian}"
+if [[ -f "$script_dir/apps/backend/server.js" ]]; then target="$script_dir"; fi
+[[ -f "$target/apps/backend/server.js" ]] || { echo "No se encontró la instalación en $target" >&2; exit 1; }
+target="$(cd "$target" && pwd)"
+exec 9>"$target/.update.lock"
+flock -n 9 || { echo 'Ya hay una actualización en curso.' >&2; exit 1; }
+
+umask 077
+work="$(mktemp -d)"
+backup=''
+cleanup() {
+  local status=$?
+  rm -rf "$work"
+  if (( status != 0 )) && [[ -n "$backup" ]]; then
+    echo "La actualización falló. Copia de seguridad: $backup" >&2
+  fi
+}
+trap cleanup EXIT
+release="$(curl -fLSs --retry 3 https://api.github.com/repos/invrnt/presentation-maker/releases/latest |
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')"
+[[ "$release" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'La release no es válida.' >&2; exit 1; }
+asset=presentation-maker-vian-debian.tar.gz
+url="https://github.com/invrnt/presentation-maker/releases/download/$release"
+echo "Descargando $release…"
+curl -fLSs --retry 3 "$url/$asset" -o "$work/$asset"
+curl -fLSs --retry 3 "$url/$asset.sha256" -o "$work/$asset.sha256"
+(cd "$work" && sha256sum -c "$asset.sha256")
+mkdir "$work/package"
+tar -xzf "$work/$asset" -C "$work/package"
+[[ -f "$work/package/install.sh" && -f "$work/package/apps/backend/server.js" ]] || {
+  echo 'El paquete no contiene el backend.' >&2; exit 1;
+}
+
+mkdir -p "$target/backups"
+backup="$(mktemp -d "$target/backups/$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX")"
+tar -czf "$backup/bot.tar.gz" -C "$target" bots/presentation-maker
+if [[ -f "$target/.env" ]]; then cp -p "$target/.env" "$backup/root.env"; fi
+unit="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/presentation-maker-vian-backend.service"
+if [[ -f "$unit" ]]; then cp -p "$unit" "$backup/"; fi
+echo "Copia de seguridad: $backup"
+PRESENTATION_MAKER_INSTALL_DIR="$target" bash "$work/package/install.sh"
+systemctl --user is-active --quiet presentation-maker-vian-backend.service
+echo "Actualizado a $release. Configuración y datos conservados."

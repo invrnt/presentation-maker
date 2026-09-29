@@ -6,7 +6,11 @@ source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 target="${PRESENTATION_MAKER_INSTALL_DIR:-$HOME/.local/share/presentation-maker-vian}"
 command -v bun >/dev/null || { echo 'Instala Bun (https://bun.com/docs/installation) y vuelve a ejecutar el instalador.' >&2; exit 1; }
 command -v systemctl >/dev/null || { echo 'Se necesita systemd con sesión de usuario.' >&2; exit 1; }
-if command -v apt-get >/dev/null; then
+missing_dependencies=false
+for dependency in curl ffmpeg ffprobe python3 zip unzip; do
+  command -v "$dependency" >/dev/null || missing_dependencies=true
+done
+if command -v apt-get >/dev/null && "$missing_dependencies"; then
   sudo apt-get update
   sudo apt-get install -y ca-certificates curl ffmpeg python3 zip unzip
 fi
@@ -15,7 +19,10 @@ case "$(uname -m)" in
   aarch64) yt_asset=yt-dlp_linux_aarch64; deno_asset=deno-aarch64-unknown-linux-gnu.zip ;;
   *) echo 'Solo se admiten Debian x86_64 y aarch64.' >&2; exit 1 ;;
 esac
-mkdir -p "$target/apps/backend" "$target/bots/presentation-maker/lib" "$target/bin" "$HOME/.config/systemd/user"
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+command_dir="${PRESENTATION_MAKER_COMMAND_DIR:-$HOME/.local/bin}"
+mkdir -p "$target/apps/backend" "$target/bots/presentation-maker/lib" "$target/bin" "$config_dir/systemd/user" "$command_dir"
+target="$(cd "$target" && pwd)"
 download_dir="$(mktemp -d)"
 trap 'rm -rf "$download_dir"' EXIT
 download_verified() {
@@ -40,12 +47,18 @@ install -m 0755 "$download_dir/deno" "$target/bin/.deno.new"
 mv -f "$target/bin/.deno.new" "$target/bin/deno"
 echo "yt-dlp: $("$target/bin/yt-dlp" --version); Deno: $("$target/bin/deno" --version | head -1)"
 cp "$source_dir/apps/backend/server.js" "$source_dir/apps/backend/template.pptx" "$source_dir/apps/backend/README.md" "$target/apps/backend/"
-cp "$source_dir/bots/presentation-maker/vian.tools.ts" "$source_dir/bots/presentation-maker/VIAN.md" "$source_dir/bots/presentation-maker/README.md" "$target/bots/presentation-maker/"
+cp "$source_dir/bots/presentation-maker/vian.tools.ts" "$source_dir/bots/presentation-maker/README.md" "$target/bots/presentation-maker/"
 cp "$source_dir/bots/presentation-maker/lib/"*.ts "$target/bots/presentation-maker/lib/"
-if [[ ! -e "$target/bots/presentation-maker/vian.json" ]]; then
-  cp "$source_dir/bots/presentation-maker/vian.json" "$target/bots/presentation-maker/"
-fi
-unit="$HOME/.config/systemd/user/presentation-maker-vian-backend.service"
+for config in vian.json VIAN.md; do
+  if [[ ! -e "$target/bots/presentation-maker/$config" ]]; then
+    cp "$source_dir/bots/presentation-maker/$config" "$target/bots/presentation-maker/"
+  fi
+done
+install -m 0755 "$source_dir/presentation-maker" "$target/.presentation-maker.new"
+mv -f "$target/.presentation-maker.new" "$target/presentation-maker"
+ln -sfn "$target/presentation-maker" "$command_dir/presentation-maker"
+unit="$config_dir/systemd/user/presentation-maker-vian-backend.service"
+if [[ ! -e "$unit" ]]; then
 cat > "$unit" <<EOF
 [Unit]
 Description=Presentation Maker headless backend for Vian
@@ -63,9 +76,11 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 EOF
+fi
 systemctl --user daemon-reload
 systemctl --user enable --now presentation-maker-vian-backend.service
 systemctl --user restart presentation-maker-vian-backend.service
 echo "Backend instalado en $target; bot: $target/bots/presentation-maker"
+echo "Actualizar: $command_dir/presentation-maker update"
 echo "Para iniciarlo al arrancar sin sesión: sudo loginctl enable-linger $USER"
 echo "Registrar bot: vian init '$target/bots/presentation-maker'"

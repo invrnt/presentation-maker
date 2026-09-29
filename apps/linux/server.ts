@@ -1,8 +1,12 @@
 import { Database } from 'bun:sqlite';
 import { mkdir, rename, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { basename, delimiter, join, resolve } from 'node:path';
 import { exportPptx } from './pptx.ts';
+
+// Also supports existing systemd units created before the managed tools directory.
+const managedBin = resolve(import.meta.dir, '../../bin');
+if (existsSync(join(managedBin, 'yt-dlp'))) process.env.PATH = `${managedBin}${delimiter}${process.env.PATH || ''}`;
 
 const root = resolve(process.env.PRESENTATION_MAKER_DATA_DIR || join(process.env.HOME || '.', '.local/share/presentation-maker-linux'));
 for (const path of ['assets', 'cache/media', 'cache/thumbnails', 'exports']) await mkdir(join(root, path), { recursive: true });

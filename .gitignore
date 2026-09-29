@@ -10,6 +10,7 @@ apps/local/PresentationMaker
 apps/local/PresentationMaker.exe
 apps/linux/web/dist/
 presentation-maker-vian-debian.tar.gz
+presentation-maker-vian-debian.tar.gz.sha256
 apps/worker/worker-configuration.d.ts
 bots/**/.vian/
 bots/**/.env

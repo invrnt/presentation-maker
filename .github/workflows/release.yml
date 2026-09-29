@@ -22,7 +22,7 @@ jobs:
           bun-version: 1.4.2
       - run: npm ci
       - run: npm run build -w apps/web
-      - run: bun test apps/linux/server.test.ts
+      - run: bun test apps/linux/server.test.ts apps/backend/update.test.ts
       - run: bash apps/backend/package.sh
       - name: Preparar source.zip
         shell: bash
@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" source.zip source.zip.sha256 install.ps1 presentation-maker-vian-debian.tar.gz --clobber
+            gh release upload "$GITHUB_REF_NAME" source.zip source.zip.sha256 install.ps1 presentation-maker-vian-debian.tar.gz presentation-maker-vian-debian.tar.gz.sha256 apps/backend/presentation-maker --clobber
           else
-            gh release create "$GITHUB_REF_NAME" source.zip source.zip.sha256 install.ps1 presentation-maker-vian-debian.tar.gz --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+            gh release create "$GITHUB_REF_NAME" source.zip source.zip.sha256 install.ps1 presentation-maker-vian-debian.tar.gz presentation-maker-vian-debian.tar.gz.sha256 apps/backend/presentation-maker --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
           fi

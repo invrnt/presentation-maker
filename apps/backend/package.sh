@@ -14,5 +14,7 @@ cp "$repo/apps/backend/README.md" "$stage/apps/backend/README.md"
 cp "$repo/bots/presentation-maker/vian.tools.ts" "$repo/bots/presentation-maker/VIAN.md" "$repo/bots/presentation-maker/vian.json" "$repo/bots/presentation-maker/README.md" "$stage/bots/presentation-maker/"
 cp "$repo/bots/presentation-maker/lib/"*.ts "$stage/bots/presentation-maker/lib/"
 cp "$repo/apps/backend/install.sh" "$stage/install.sh"
+cp "$repo/apps/backend/presentation-maker" "$stage/presentation-maker"
 tar -czf "$output" -C "$stage" .
+(cd "$(dirname "$output")" && sha256sum "$(basename "$output")" > "$(basename "$output").sha256")
 echo "Paquete mínimo: $output"
