@@ -112,3 +112,18 @@ test('keeps configuration and backup when dependency installation fails', async 
   for (const [file, contents] of Object.entries(f.saved)) expect(await readFile(join(f.target, file), 'utf8')).toBe(contents);
   expect(await readFile(join(f.target, 'apps/backend/server.js'), 'utf8')).toBe('old backend');
 });
+
+test('updates from a non-interactive shell when Bun is installed outside PATH', async () => {
+  const f = await fixture();
+  const bunInstall = join(f.root, 'bun-install');
+  await mkdir(join(bunInstall, 'bin'), { recursive: true });
+  const bun = join(bunInstall, 'bin/bun');
+  await writeFile(bun, '#!/bin/sh\necho 1.4.2\n');
+  await chmod(bun, 0o755);
+  const result = await run(['bash', join(import.meta.dir, 'presentation-maker'), 'update'], {
+    ...f.env, BUN_INSTALL: bunInstall, PATH: `${join(f.root, 'mocks')}:/usr/bin:/bin`,
+  });
+  expect(result.code, result.stderr).toBe(0);
+  expect(result.stdout).toContain('Actualizado a v9.8.7');
+  expect(await readFile(join(f.target, 'apps/backend/server.js'), 'utf8')).toBe('new release');
+});

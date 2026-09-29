@@ -53,7 +53,7 @@ Desde v1.1.6 el instalador añade el comando a `~/.local/bin`:
 presentation-maker update
 ```
 
-Si esa carpeta no está en tu PATH, usa `~/.local/bin/presentation-maker update`. El comando descarga la última release estable, verifica el SHA-256 del paquete, guarda una copia privada del bot en `<instalación>/backups/` y ejecuta el instalador. Actualiza el backend, las herramientas del bot, yt-dlp y Deno, y reinicia el backend. Solo solicita sudo si faltan dependencias del sistema.
+Si esa carpeta no está en tu PATH, usa `~/.local/bin/presentation-maker update`. El comando descarga la última release estable, verifica el SHA-256 del paquete, guarda una copia privada del bot en `<instalación>/backups/` y ejecuta el instalador. Actualiza el backend, las herramientas del bot, yt-dlp y Deno, y reinicia el backend. Solo solicita sudo si faltan dependencias del sistema. El instalador detecta también Bun en `~/.bun/bin/bun` cuando una sesión no interactiva no incluye esa carpeta en el PATH.
 
 Conserva `vian.json`, `.env`, `VIAN.md`, `.vian/` y el servicio systemd existente, incluidos su puerto y directorio de datos personalizados. La configuración global de Vian y la base de datos de proyectos no se modifican. La copia contiene todo el directorio del bot, el `.env` de la instalación si existe y el archivo del servicio; no es una copia de los proyectos ni de la configuración global de Vian. No ejecutes la actualización mientras el bot esté generando una presentación o descargando videos.
 

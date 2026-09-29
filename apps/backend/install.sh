@@ -4,6 +4,11 @@ set -euo pipefail
 # Run from the extracted package as the Debian user who owns the Vian bot.
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 target="${PRESENTATION_MAKER_INSTALL_DIR:-$HOME/.local/share/presentation-maker-vian}"
+# Non-interactive sessions may not load Bun's PATH entry from the shell profile.
+bun_install="${BUN_INSTALL:-$HOME/.bun}"
+if ! command -v bun >/dev/null && [[ -x "$bun_install/bin/bun" ]]; then
+  export PATH="$bun_install/bin:$PATH"
+fi
 command -v bun >/dev/null || { echo 'Instala Bun (https://bun.com/docs/installation) y vuelve a ejecutar el instalador.' >&2; exit 1; }
 command -v systemctl >/dev/null || { echo 'Se necesita systemd con sesión de usuario.' >&2; exit 1; }
 missing_dependencies=false
