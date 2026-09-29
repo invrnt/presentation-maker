@@ -36,7 +36,7 @@
   },
   "attachments": {
     "defaultTtlHours": 24,
-    "maxFileBytes": 52428800
+    "maxFileBytes": 262144000
   },
   "mcp": []
 }

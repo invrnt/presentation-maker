@@ -65,6 +65,17 @@ for config in vian.json VIAN.md; do
     cp "$source_dir/bots/presentation-maker/$config" "$target/bots/presentation-maker/"
   fi
 done
+# Migrate only the previous default; preserve custom limits and all other settings.
+python3 - "$target/bots/presentation-maker/vian.json" <<'PYCONFIG'
+import json,sys,os
+p=sys.argv[1]
+d=json.load(open(p))
+if d.get('attachments',{}).get('maxFileBytes') == 52428800:
+    d['attachments']['maxFileBytes']=262144000
+    with open(p+'.new','w') as f: json.dump(d,f,ensure_ascii=False,indent=2); f.write('\n')
+    os.chmod(p+'.new',os.stat(p).st_mode & 0o777)
+    os.replace(p+'.new',p)
+PYCONFIG
 install -m 0755 "$source_dir/presentation-maker" "$target/.presentation-maker.new"
 mv -f "$target/.presentation-maker.new" "$target/presentation-maker"
 ln -sfn "$target/presentation-maker" "$command_dir/presentation-maker"
@@ -95,3 +106,17 @@ echo "Backend instalado en $target; bot: $target/bots/presentation-maker"
 echo "Actualizar: $command_dir/presentation-maker update"
 echo "Para iniciarlo al arrancar sin sesión: sudo loginctl enable-linger $USER"
 echo "Registrar bot: vian init '$target/bots/presentation-maker'"
+
+# Replacing tool files is insufficient: Vian bundles them at bot startup.
+vian_command="$(command -v vian || true)"
+if [[ -z "$vian_command" && -x "$HOME/.local/bin/vian" ]]; then vian_command="$HOME/.local/bin/vian"; fi
+bot_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id", ""))' "$target/bots/presentation-maker/vian.json")"
+if [[ -n "$vian_command" && -n "$bot_id" ]]; then
+  if "$vian_command" status "$bot_id" --json > "$download_dir/bot-status.json" 2>/dev/null &&
+      python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("data",{}).get("status")=="running" else 1)' "$download_dir/bot-status.json"; then
+    "$vian_command" restart "$bot_id" --json
+    echo 'Bot Vian recargado con las herramientas nuevas.'
+  else
+    echo 'Bot detenido o no registrado; cargará las herramientas nuevas al iniciarse.'
+  fi
+fi

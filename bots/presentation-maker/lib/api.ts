@@ -1,7 +1,7 @@
 import { API_PASSWORD, API_USERNAME, BASE_URL, LINUX_LOCAL } from './config.ts';
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly failure?: { code: string; message: string; retryable: boolean }, readonly jobId?: string) {
     super(message);
     this.name = 'ApiError';
   }
@@ -21,7 +21,10 @@ export async function api<T>(
     headers.set('Content-Type', 'application/json');
   }
   const response = await fetch(`${BASE_URL}${path}`, { ...init, headers });
-  if (!response.ok) throw new ApiError(await readError(response), response.status);
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+    throw new ApiError(failure.error || `Error ${response.status}`, response.status, failure.failure);
+  }
   if (response.status === 204) return undefined as T;
   const text = await response.text();
   if (!text) return undefined as T;

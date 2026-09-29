@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, normalize, resolve, sep } from 'node:path';
-import { ATTACHMENTS_DIR, LINUX_LOCAL } from './lib/config.ts';
+import { ATTACHMENTS_DIR, BOT_ROOT, LINUX_LOCAL } from './lib/config.ts';
 import {
   aiPlan,
   createProject,
@@ -20,6 +20,7 @@ import {
   type ProjectDocument,
   type SlideElement,
 } from './lib/api.ts';
+import { toolFailure, exportLimit } from './lib/tool-results.ts';
 import { ensureBackend } from './lib/backend.ts';
 import { applyAIPlan, prepareSong } from './lib/presentation.ts';
 
@@ -313,8 +314,8 @@ export default {
     async execute(input: { urlOrId: string }, ctx: Ctx) {
       return withBackend(ctx.abortSignal, async (signal) => {
         const song = await prepareSong(input.urlOrId.trim(), signal, (message) => ctx.logger.info(message));
-        return { song };
-      });
+        return { ok: true, song };
+      }).catch(error => toolFailure(error, ctx.abortSignal));
     },
   },
 
@@ -325,7 +326,7 @@ export default {
       required: ['jobId'], additionalProperties: false,
     },
     async execute(input: { jobId: string }, ctx: Ctx) {
-      return withBackend(ctx.abortSignal, signal => getDownloadJob(input.jobId, signal));
+      return withBackend(ctx.abortSignal, signal => getDownloadJob(input.jobId, signal)).catch(error => toolFailure(error, ctx.abortSignal));
     },
   } } : {}),
 
@@ -504,6 +505,10 @@ export default {
             await fs.writeFile(tempPath, bytes);
             byteLength = bytes.byteLength;
           }
+          if (LINUX_LOCAL) {
+            const limit = exportLimit(byteLength, JSON.parse(readFileSync(join(BOT_ROOT, 'vian.json'), 'utf8')));
+            if (limit) return { ok: false, exported: true, filename: exportResult.filename, bytes: byteLength, downloadUrl: exportResult.url, failure: { ...limit, retryable: false } };
+          }
           const attachment = await ctx.attachments.register({
             path: tempPath,
             name: input.filename?.trim() || exportResult.filename,
@@ -518,7 +523,7 @@ export default {
         } finally {
           await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
         }
-      });
+      }).catch(error => toolFailure(error, ctx.abortSignal));
     },
   },
 };

@@ -127,3 +127,16 @@ test('updates from a non-interactive shell when Bun is installed outside PATH', 
   expect(result.stdout).toContain('Actualizado a v9.8.7');
   expect(await readFile(join(f.target, 'apps/backend/server.js'), 'utf8')).toBe('new release');
 });
+
+test('update reloads the running bot and migrates only its old attachment default', async () => {
+  const f = await fixture();
+  const manifest = join(f.target, 'bots/presentation-maker/vian.json');
+  await writeFile(manifest, JSON.stringify({ id: 'fixture-bot', model: 'preserve', attachments: { maxFileBytes: 52428800, defaultTtlHours: 48 } }));
+  const vian = join(f.root, 'mocks/vian');
+  await writeFile(vian, '#!/bin/sh\nprintf "%s\\n" "$*" >> "$FIXTURE_SERVICE_LOG"\nif [ "$1" = status ]; then echo \'{"ok":true,"data":{"status":"running"}}\'; fi\n');
+  await chmod(vian, 0o755);
+  const result = await run(['bash', join(import.meta.dir, 'presentation-maker'), 'update'], f.env);
+  expect(result.code, result.stderr).toBe(0);
+  expect(JSON.parse(await readFile(manifest, 'utf8'))).toEqual({ id: 'fixture-bot', model: 'preserve', attachments: { maxFileBytes: 262144000, defaultTtlHours: 48 } });
+  expect(await readFile(join(f.root, 'service.log'), 'utf8')).toContain('restart fixture-bot --json');
+});

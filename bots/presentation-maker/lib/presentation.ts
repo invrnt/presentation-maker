@@ -1,5 +1,5 @@
 import type { AIPlan, ProjectDocument, Slide, SlideElement, Song } from './api.ts';
-import { downloadSong, importSong, listSongs, uid, waitForJob } from './api.ts';
+import { ApiError, downloadSong, importSong, listSongs, uid, waitForJob } from './api.ts';
 
 export function plannedText(
   item: AIPlan['slides'][number]['texts'][number],
@@ -58,7 +58,7 @@ export async function prepareSong(
   onStatus?.(`Descargando “${song.title}”…`);
   const { jobId } = await downloadSong(song.id, signal);
   const job = await waitForJob(jobId, signal);
-  if (job.error) throw new Error(`${job.failure?.message || job.message} (${job.failure?.code || 'MEDIA_FAILED'}): ${job.error}. Trabajo: ${jobId}; reintentable: ${job.failure?.retryable === true}`);
+  if (job.error) throw new ApiError(job.failure?.message || job.message, 422, job.failure || { code: 'MEDIA_FAILED', message: job.message, retryable: false }, jobId);
   if (!job.done) return { ...song, downloaded: false, jobId, status: job.message };
   const fresh = await listSongs(signal);
   const ready = fresh.find((item) => item.id === song!.id);

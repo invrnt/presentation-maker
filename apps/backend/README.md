@@ -122,3 +122,24 @@ Pruebas del backend y del bot (requieren FFmpeg y Bun):
 bun test apps/linux apps/backend/update.test.ts bots/presentation-maker/tests
 bash apps/backend/package.sh
 ```
+
+## Recarga y adjuntos grandes
+
+Las actualizaciones recargan el bot registrado si está ejecutándose, para sustituir
+el código de herramientas que Vian conserva en memoria. Los bots detenidos cargan
+las herramientas nuevas al arrancar. Se migra el límite predeterminado anterior
+(50 MiB) a 250 MiB; los límites personalizados se conservan.
+
+Para enviar documentos mayores de 50 MiB, Vian necesita Telegram Bot API **local**;
+subir `maxFileBytes` por sí solo no cambia el límite de la API pública. Requiere
+`TELEGRAM_API_ID` y `TELEGRAM_API_HASH` propios, además del token existente. Vian
+con soporte de API local debe configurar `gate.telegram.apiRoot`, `localApi: true`,
+`localFileRoot` y `uploadTimeoutSeconds: 1800`, y registrar adjuntos hasta
+`262144000` bytes. No cambies el endpoint hasta tener el servidor local funcionando
+y completar la migración oficial mediante `logOut`.
+
+`prepare_song` devuelve `ok:false` y `failure` para errores conocidos, permitiendo
+que el agente explique videos no disponibles sin abortar toda la presentación.
+`export_presentation` diferencia un error al crear el PPTX de un archivo ya generado
+que no se puede adjuntar: devuelve `exported:true`, tamaño y causa del límite.
+No vuelve a generar el archivo para resolver un límite de transporte.
