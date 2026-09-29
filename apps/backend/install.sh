@@ -14,6 +14,12 @@ if command -v apt-get >/dev/null && "$missing_dependencies"; then
   sudo apt-get update
   sudo apt-get install -y ca-certificates curl ffmpeg python3 zip unzip
 fi
+for dependency in curl ffmpeg ffprobe python3 zip unzip; do
+  command -v "$dependency" >/dev/null || { echo "Falta la dependencia obligatoria: $dependency" >&2; exit 1; }
+done
+ffmpeg -hide_banner -loglevel error -f lavfi -i color=s=16x16:d=0.1 -f lavfi -i anullsrc -t 0.1 \
+  -vf 'setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=limited,zscale=transfer=linear,format=gbrpf32le,tonemap=tonemap=hable,zscale=transfer=bt709:primaries=bt709:matrix=bt709,format=yuv420p' \
+  -c:v libx264 -c:a aac -f null - || { echo 'FFmpeg debe incluir libx264, AAC, zscale y tonemap.' >&2; exit 1; }
 case "$(uname -m)" in
   x86_64) yt_asset=yt-dlp_linux; deno_asset=deno-x86_64-unknown-linux-gnu.zip ;;
   aarch64) yt_asset=yt-dlp_linux_aarch64; deno_asset=deno-aarch64-unknown-linux-gnu.zip ;;

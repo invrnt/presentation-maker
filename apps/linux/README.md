@@ -31,3 +31,5 @@ npm run build -w apps/web
 ```
 
 Implementation references checked 2026-09-24: [Bun SQLite](https://bun.com/docs/runtime/sqlite) and [Bun HTTP routing/server](https://bun.com/docs/runtime/http/server) for Bun 1.4.2; [yt-dlp installation](https://github.com/yt-dlp/yt-dlp/wiki/Installation) for Debian package/upstream update options. The server has no added npm runtime dependencies.
+
+Video dependency checks, normalization, job polling, and resource limits are documented in the [headless backend video guide](../backend/README.md#videos-fiables-y-diagnóstico).

@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { AI_GATEWAY_API_KEY, BASE_URL, BOT_ROOT, LINUX_LOCAL, LOG_DIR, REPO_ROOT, WORKER_URL } from './config.ts';
-import { ensureLogin, health } from './api.ts';
+import { api, ensureLogin, health } from './api.ts';
 
 async function workerHealthy(): Promise<boolean> {
   try {
@@ -61,6 +61,16 @@ export async function ensureBackend(signal: AbortSignal): Promise<Record<string,
     details.ready = local.ok && ['linux-bun-1', 'headless-bun-1'].includes(local.version || '');
     details.version = local.version;
     if (!details.ready) details.backendError = local.error || 'El servidor Bun no quedó listo.';
+    else {
+      try {
+        const media = await api<{ ready: boolean; errors: string[] }>('/api/media/health', { signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]) });
+        details.media = media;
+        if (!media.ready) { details.ready = false; details.backendError = media.errors.join(' '); }
+      } catch (error) {
+        details.ready = false;
+        details.backendError = `No se pudieron verificar las dependencias de video. Actualiza el backend. ${error instanceof Error ? error.message : error}`;
+      }
+    }
     return details;
   }
   const details: Record<string, unknown> = { base: BASE_URL, worker: WORKER_URL };

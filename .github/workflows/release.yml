@@ -22,7 +22,9 @@ jobs:
           bun-version: 1.4.2
       - run: npm ci
       - run: npm run build -w apps/web
-      - run: bun test apps/linux/server.test.ts apps/backend/update.test.ts
+      - name: Instalar FFmpeg para validar videos
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: bun test apps/linux apps/backend/update.test.ts bots/presentation-maker/tests
       - run: bash apps/backend/package.sh
       - name: Preparar source.zip
         shell: bash

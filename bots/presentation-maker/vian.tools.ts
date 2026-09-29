@@ -5,6 +5,8 @@ import {
   aiPlan,
   createProject,
   downloadExport,
+  saveExport,
+  getDownloadJob,
   ensureLogin,
   exportProject,
   getProject,
@@ -299,7 +301,7 @@ export default {
 
   prepare_song: {
     description:
-      'Importa (si hace falta) y descarga un video de YouTube hasta que esté listo para embeber. Acepta URL o id del repertorio. Devuelve la canción con downloaded=true.',
+      'Importa (si hace falta) y descarga un video de YouTube hasta que esté listo para embeber. Acepta URL o id del repertorio. Espera hasta un minuto; devuelve downloaded=true cuando está listo o jobId y status si continúa en segundo plano. Consulta get_download_job y repite prepare_song al terminar.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -315,6 +317,17 @@ export default {
       });
     },
   },
+
+  ...(LINUX_LOCAL ? { get_download_job: {
+    description: 'Consulta una descarga en segundo plano. Si done=false, sigue procesándose. Si error está presente, failure explica la causa y si conviene reintentar prepare_song. Al terminar sin error, llama prepare_song por id para obtener la canción lista.',
+    inputSchema: {
+      type: 'object', properties: { jobId: { type: 'string', minLength: 1, maxLength: 64 } },
+      required: ['jobId'], additionalProperties: false,
+    },
+    async execute(input: { jobId: string }, ctx: Ctx) {
+      return withBackend(ctx.abortSignal, signal => getDownloadJob(input.jobId, signal));
+    },
+  } } : {}),
 
   list_songs: {
     description: 'Lista el repertorio de canciones (id, título, youtubeId, downloaded).',
@@ -479,13 +492,18 @@ export default {
     async execute(input: { projectId: string; filename?: string }, ctx: Ctx) {
       return withBackend(ctx.abortSignal, async (signal) => {
         const exportResult = await exportProject(assertProjectId(input.projectId), signal);
-        const bytes = await downloadExport(exportResult.url, signal);
         const fs = await import('node:fs/promises');
         const os = await import('node:os');
         const tempDir = await fs.mkdtemp(join(os.tmpdir(), 'pptx-'));
         const tempPath = join(tempDir, exportResult.filename);
-        await fs.writeFile(tempPath, bytes);
         try {
+          let byteLength: number;
+          if (LINUX_LOCAL) byteLength = await saveExport(exportResult.url, tempPath, signal);
+          else {
+            const bytes = await downloadExport(exportResult.url, signal);
+            await fs.writeFile(tempPath, bytes);
+            byteLength = bytes.byteLength;
+          }
           const attachment = await ctx.attachments.register({
             path: tempPath,
             name: input.filename?.trim() || exportResult.filename,
@@ -494,7 +512,7 @@ export default {
           return {
             message: 'Presentación exportada. Envíala con send_attachment.',
             filename: exportResult.filename,
-            bytes: bytes.byteLength,
+            bytes: byteLength,
             attachment,
           };
         } finally {

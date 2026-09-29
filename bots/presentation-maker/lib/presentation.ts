@@ -43,10 +43,10 @@ export async function prepareSong(
   urlOrId: string,
   signal: AbortSignal,
   onStatus?: (message: string) => void,
-): Promise<Song> {
+): Promise<Song & { jobId?: string; status?: string }> {
   const catalog = await listSongs(signal);
   let song: Song | undefined;
-  if (/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(urlOrId)) {
+  if (/^https?:\/\/((www|m)\.)?(youtube\.com|youtu\.be)\//i.test(urlOrId)) {
     onStatus?.('Obteniendo información de YouTube…');
     song = catalog.find((item) => item.youtubeUrl === urlOrId || item.youtubeId === urlOrId);
     if (!song) song = await importSong(urlOrId, signal);
@@ -57,7 +57,9 @@ export async function prepareSong(
   if (song.downloaded) return song;
   onStatus?.(`Descargando “${song.title}”…`);
   const { jobId } = await downloadSong(song.id, signal);
-  await waitForJob(jobId, signal);
+  const job = await waitForJob(jobId, signal);
+  if (job.error) throw new Error(`${job.failure?.message || job.message} (${job.failure?.code || 'MEDIA_FAILED'}): ${job.error}. Trabajo: ${jobId}; reintentable: ${job.failure?.retryable === true}`);
+  if (!job.done) return { ...song, downloaded: false, jobId, status: job.message };
   const fresh = await listSongs(signal);
   const ready = fresh.find((item) => item.id === song!.id);
   if (!ready?.downloaded) throw new Error(`No se pudo preparar ${song.title}.`);
@@ -89,6 +91,7 @@ export async function applyAIPlan(
     }
     if (song && !song.downloaded) song = await prepareSong(song.youtubeUrl, signal, onStatus);
 
+    if (song && !song.downloaded) throw new Error('El video sigue procesándose. Consulta el trabajo antes de añadirlo.');
     const elements: SlideElement[] = [];
     if (song) {
       const video = videoElement(song) as Extract<SlideElement, { type: 'video' }>;

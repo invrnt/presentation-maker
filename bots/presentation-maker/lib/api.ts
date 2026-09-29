@@ -244,11 +244,37 @@ export async function downloadSong(songId: string, signal?: AbortSignal): Promis
   });
 }
 
+export type DownloadJob = { jobId?: string; message: string; error?: string; done: boolean; failure?: { code: string; retryable: boolean; message: string; detail: string } };
+export function getDownloadJob(jobId: string, signal?: AbortSignal): Promise<DownloadJob> {
+  return api(`/api/jobs/${encodeURIComponent(jobId)}`, { signal });
+}
+
 export async function waitForJob(
   jobId: string,
   signal: AbortSignal,
   timeoutMs = 180_000,
-): Promise<{ message: string; error?: string; done: boolean }> {
+): Promise<DownloadJob> {
+  if (LINUX_LOCAL) {
+    const deadline = Date.now() + Math.min(timeoutMs, 60_000);
+    let last: DownloadJob = { message: 'En cola…', done: false };
+    do {
+      try {
+        last = await getDownloadJob(jobId, AbortSignal.any([signal, AbortSignal.timeout(10_000)]));
+      } catch (error) {
+        signal.throwIfAborted();
+        if (error instanceof ApiError && error.status < 500) throw error;
+        last = { message: 'No se pudo consultar el estado; el trabajo continúa en el backend.', done: false };
+      }
+      if (last.done) return last;
+      await new Promise<void>((resolve, reject) => {
+        signal.throwIfAborted();
+        const abort = () => { clearTimeout(timer); reject(signal.reason); };
+        const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, 1000);
+        signal.addEventListener('abort', abort, { once: true });
+      });
+    } while (Date.now() < deadline);
+    return { ...last, jobId };
+  }
   const deadline = Date.now() + timeoutMs;
   const response = await fetch(`${BASE_URL}/api/jobs/${encodeURIComponent(jobId)}/events`, {
     headers: { Accept: 'text/event-stream' },
@@ -341,4 +367,16 @@ export async function downloadExport(url: string, signal?: AbortSignal): Promise
   const response = await fetch(`${BASE_URL}${url}`, { signal });
   if (!response.ok) throw new ApiError(await readError(response), response.status);
   return new Uint8Array(await response.arrayBuffer());
+}
+
+// Stream large presentations to disk instead of retaining a second full copy in RAM.
+export async function saveExport(url: string, target: string, signal?: AbortSignal): Promise<number> {
+  const response = await fetch(`${BASE_URL}${url}`, { signal });
+  if (!response.ok || !response.body) throw new ApiError(await readError(response), response.status);
+  const { createWriteStream } = await import('node:fs');
+  const { stat } = await import('node:fs/promises');
+  const { Readable } = await import('node:stream');
+  const { pipeline } = await import('node:stream/promises');
+  await pipeline(Readable.fromWeb(response.body as any), createWriteStream(target), { signal });
+  return (await stat(target)).size;
 }

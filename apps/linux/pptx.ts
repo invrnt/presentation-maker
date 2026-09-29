@@ -1,3 +1,4 @@
+import { MEDIA_PROFILE } from './media.ts';
 import type { Database } from 'bun:sqlite';
 import { cp, mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -35,6 +36,7 @@ export async function exportPptx(doc: any, db: Database, root: string, target: s
     await mkdir(join(temp,'ppt/slides/_rels'), { recursive:true });
     await mkdir(join(temp,'ppt/media'), { recursive:true });
     let mediaIndex = 0;
+    const embeddedVideos = new Map<string, { videoName: string; posterName: string }>();
     for (const [slideIndex, slide] of doc.slides.entries()) {
       if (!Array.isArray(slide.elements)) throw new Error('Una diapositiva es inválida.');
       const shapes: string[] = [], rels: string[] = [];
@@ -54,12 +56,16 @@ export async function exportPptx(doc: any, db: Database, root: string, target: s
           const youtubeId = String(item.youtubeId || '');
           if (!/^[a-zA-Z0-9_-]{6,20}$/.test(youtubeId)) throw new Error('ID de video inválido.');
           const media: any = db.query('SELECT * FROM media WHERE youtube_id=?').get(youtubeId);
-          if (!media?.path || !existsSync(media.path)) throw new Error(`Falta el video ${xml(item.title || youtubeId)}.`);
-          const videoName=`video${++mediaIndex}.mp4`, posterName=`poster${mediaIndex}.jpg`;
-          await cp(media.path,join(temp,'ppt/media',videoName));
-          if (!media.poster || !existsSync(media.poster)) {
-            await run(['ffmpeg','-y','-ss','0','-i',media.path,'-frames:v','1','-q:v','3',join(temp,'ppt/media',posterName)]);
-          } else await cp(media.poster,join(temp,'ppt/media',posterName));
+          if (media?.profile !== MEDIA_PROFILE || !media?.path || !existsSync(media.path)) throw new Error(`Prepara nuevamente el video ${xml(item.title || youtubeId)}: falta el archivo o su validación de compatibilidad.`);
+          const names = embeddedVideos.get(youtubeId) || { videoName: `video${++mediaIndex}.mp4`, posterName: `poster${mediaIndex}.jpg` };
+          const { videoName, posterName } = names;
+          if (!embeddedVideos.has(youtubeId)) {
+            await cp(media.path,join(temp,'ppt/media',videoName));
+            if (!media.poster || !existsSync(media.poster)) {
+              await run(['ffmpeg','-y','-ss','0','-i',media.path,'-frames:v','1','-q:v','3',join(temp,'ppt/media',posterName)]);
+            } else await cp(media.poster,join(temp,'ppt/media',posterName));
+            embeddedVideos.set(youtubeId, names);
+          }
           rels.push(`<Relationship Id="rId${rel}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${posterName}"/>`,`<Relationship Id="rId${rel+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/video" Target="../media/${videoName}"/>`,`<Relationship Id="rId${rel+2}" Type="http://schemas.microsoft.com/office/2007/relationships/media" Target="../media/${videoName}"/>`);
         }
         shapes.push(shape(item,shapeId++,rel));
