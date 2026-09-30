@@ -143,3 +143,25 @@ que el agente explique videos no disponibles sin abortar toda la presentación.
 `export_presentation` diferencia un error al crear el PPTX de un archivo ya generado
 que no se puede adjuntar: devuelve `exported:true`, tamaño y causa del límite.
 No vuelve a generar el archivo para resolver un límite de transporte.
+
+### Diapositivas de video y validación
+
+El bot Linux usa `add_video_slides` (`POST /api/projects/:id/video-slides`) con
+`{ requestId, youtubeIds }`: añade una diapositiva por video en el orden recibido,
+reutiliza solo la diapositiva inicial vacía y confirma el lote completo en una
+transacción. El mismo `requestId` y lista pueden reenviarse sin duplicar contenido;
+una lista diferente con ese id devuelve `REQUEST_CONFLICT`. Los videos deben estar
+preparados antes de añadirlos. No se debe llamar `save_project` después.
+
+`validate_project` (`GET /api/projects/:id/validate`) devuelve el número de
+diapositivas y los videos de cada una. Guardar y exportar validan identificadores,
+geometría dentro de 1920×1080 y solapamientos entre videos, incluidos proyectos
+antiguos. Los videos lado a lado y los textos sobre un video siguen admitidos.
+Los errores de validación son respuestas 422 con `failure.code`, `message` y
+`retryable=false`, visibles para el agente. La exportación devuelve también el
+resumen validado. La revisión del orden solicitado sigue siendo responsabilidad
+del agente.
+
+El actualizador renueva únicamente el bloque `presentation-maker:managed-layout`
+de `VIAN.md`, conservando las instrucciones personalizadas y la configuración de
+Telegram local. Como antes, respalda la instalación y recarga el bot activo.

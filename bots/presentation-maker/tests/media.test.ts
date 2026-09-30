@@ -61,3 +61,19 @@ test('export reports transport and attachment limits separately at the 250 MiB b
   expect(exportLimit(size, { attachments: { maxFileBytes: size } })?.code).toBe('TELEGRAM_LOCAL_API_REQUIRED');
   expect(exportLimit(size, { ...local, attachments: { maxFileBytes: 50 * 1024 * 1024 } })?.code).toBe('ATTACHMENT_LIMIT');
 });
+
+
+test('layout failures remain actionable tool results for save, validation and export', async () => {
+  const failure={code:'OVERLAPPING_VIDEOS',message:'Diapositiva 1: separa los videos con add_video_slides.',retryable:false};
+  globalThis.fetch=(async (url:string) => {
+    const path=new URL(url).pathname;
+    if(path==='/api/health') return Response.json({ok:true,version:'headless-bun-1'});
+    if(path==='/api/media/health') return Response.json({ready:true,errors:[]});
+    return Response.json({error:failure.message,failure},{status:422});
+  }) as typeof fetch;
+  const tools=(await import('../vian.tools.ts')).default;
+  const ctx={abortSignal:new AbortController().signal,logger:{info(){},error(){}},attachments:{}} as any;
+  for(const [tool,input] of [[tools.save_project,{document:{id:'project',version:1,title:'Test',slides:[{id:'slide',elements:[]}]}}],[tools.validate_project,{projectId:'project'}],[tools.export_presentation,{projectId:'project'}]] as any[]) {
+    expect(await tool.execute(input,ctx)).toEqual({ok:false,failure});
+  }
+});

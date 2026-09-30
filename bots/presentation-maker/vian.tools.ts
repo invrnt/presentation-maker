@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import { ATTACHMENTS_DIR, BOT_ROOT, LINUX_LOCAL } from './lib/config.ts';
 import {
+  api,
+  ApiError,
   aiPlan,
   createProject,
   downloadExport,
@@ -82,13 +84,16 @@ function ensureExtension(filename: string, mime: string): string {
   return filename.replace(/\.\w+$/, '') + '.jpg';
 }
 
-async function withBackend<T>(signal: AbortSignal, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+async function withBackend<T>(signal: AbortSignal, fn: (signal: AbortSignal) => Promise<T>): Promise<T | ReturnType<typeof toolFailure>> {
   const status = await ensureBackend(signal);
   if (!status.ready) {
     const reason = status.authError || status.backendError || status.workerError || 'el backend no quedó listo';
     throw new Error(`Backend no listo: ${reason}`);
   }
-  return fn(signal);
+  try { return await fn(signal); } catch (error) {
+    if (error instanceof ApiError && error.failure) return toolFailure(error, signal);
+    throw error;
+  }
 }
 
 export default {
@@ -188,9 +193,26 @@ export default {
     },
   },
 
+  ...(LINUX_LOCAL ? {
+    add_video_slides: {
+      description: 'Forma preferida de añadir videos: crea UNA diapositiva por youtubeId, en el orden recibido. Requiere videos ya preparados. Reutiliza la diapositiva inicial vacía. Conserva las demás. requestId identifica esta operación: reutilízalo solo al reintentar la misma lista para evitar duplicados. No hace falta save_project después.',
+      inputSchema: { type:'object', properties: { projectId:{type:'string',minLength:1}, requestId:{type:'string',pattern:'^[a-zA-Z0-9_-]{1,64}$'}, youtubeIds:{type:'array',minItems:1,maxItems:200,items:{type:'string',pattern:'^[a-zA-Z0-9_-]{6,20}$'}} }, required:['projectId','requestId','youtubeIds'], additionalProperties:false },
+      async execute(input: {projectId:string;requestId:string;youtubeIds:string[]}, ctx: Ctx) {
+        return withBackend(ctx.abortSignal, signal => api(`/api/projects/${assertProjectId(input.projectId)}/video-slides`, {method:'POST',body:JSON.stringify({requestId:input.requestId,youtubeIds:input.youtubeIds}),signal})).catch(error => toolFailure(error,ctx.abortSignal));
+      },
+    },
+    validate_project: {
+      description: 'Comprueba estructura, geometría y videos superpuestos. Devuelve el número de diapositivas y los videos de cada una: compáralos con el orden solicitado antes de exportar.',
+      inputSchema: {type:'object',properties:{projectId:{type:'string',minLength:1}},required:['projectId'],additionalProperties:false},
+      async execute(input: {projectId:string}, ctx: Ctx) {
+        return withBackend(ctx.abortSignal, signal => api(`/api/projects/${assertProjectId(input.projectId)}/validate`, {signal})).catch(error => toolFailure(error,ctx.abortSignal));
+      },
+    },
+  } : {}),
+
   save_project: {
     description:
-      'Guarda el documento completo de una presentación (autosave del editor). Requiere version=1, mismo id y ≥1 diapositiva.',
+      'Edición avanzada: guarda el documento completo. Para añadir videos usa add_video_slides; nunca apiles videos en una diapositiva. Requiere version=1, mismo id y ≥1 diapositiva.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -515,6 +537,7 @@ export default {
             mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
           });
           return {
+            validation: exportResult.validation,
             message: 'Presentación exportada. Envíala con send_attachment.',
             filename: exportResult.filename,
             bytes: byteLength,

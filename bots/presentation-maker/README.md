@@ -45,3 +45,9 @@ vian logs presentation-maker --follow
 ```
 
 Keep `.env` and `.vian/` out of git (covered by this folder’s `.gitignore` and the root ignore rules).
+
+En Linux, `add_video_slides` es la herramienta preferida para listas ordenadas de
+videos: crea y guarda una diapositiva por video, sin solicitar geometría al agente.
+`validate_project` comprueba la estructura y devuelve los videos por diapositiva
+antes de exportar. Los errores de videos superpuestos bloquean tanto el guardado
+como la exportación; no se corrigen descartando contenido silenciosamente.

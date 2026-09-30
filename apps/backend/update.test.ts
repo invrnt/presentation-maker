@@ -12,7 +12,7 @@ async function run(args: string[], env: Record<string, string | undefined>, cwd?
   return { code, stdout, stderr };
 }
 
-async function fixture() {
+async function fixture(layoutRules = false) {
   const root = await mkdtemp(join(tmpdir(), 'pm-update-'));
   temporary.push(root);
   const target = join(root, 'custom installation');
@@ -58,6 +58,7 @@ cp "$FIXTURE_RELEASE_DIR/$asset" "$output"
   const denoAsset = `deno-${arch}-unknown-linux-gnu.zip`;
   await script(join(release, ytAsset), 'echo 2026.08.19\n');
   await script(join(release, 'deno'), 'echo "deno 2.9.7"\n');
+  if (layoutRules) await cp(join(import.meta.dir, '../../bots/presentation-maker/VIAN.md'), join(pkg, bot, 'VIAN.md'));
   const asset = 'presentation-maker-vian-debian.tar.gz';
   expect((await run(['zip', '-q', join(release, denoAsset), 'deno'], process.env, release)).code).toBe(0);
   expect((await run(['tar', '-czf', join(release, asset), '-C', pkg, '.'], process.env)).code).toBe(0);
@@ -139,4 +140,24 @@ test('update reloads the running bot and migrates only its old attachment defaul
   expect(result.code, result.stderr).toBe(0);
   expect(JSON.parse(await readFile(manifest, 'utf8'))).toEqual({ id: 'fixture-bot', model: 'preserve', attachments: { maxFileBytes: 262144000, defaultTtlHours: 48 } });
   expect(await readFile(join(f.root, 'service.log'), 'utf8')).toContain('restart fixture-bot --json');
+});
+
+
+test('refreshes managed layout rules while preserving custom instructions and local Telegram settings', async () => {
+  const f = await fixture(true);
+  const manifest = join(f.target,'bots/presentation-maker/vian.json');
+  const config = {attachments:{maxFileBytes:262144000},gate:{telegram:{localApi:true,apiRoot:'http://127.0.0.1:8081',uploadTimeoutSeconds:1800}}};
+  await writeFile(manifest,JSON.stringify(config));
+  const instructions = join(f.target,'bots/presentation-maker/VIAN.md');
+  await writeFile(instructions, 'Mis instrucciones personalizadas\n<!-- presentation-maker:managed-layout:start -->old<!-- presentation-maker:managed-layout:end -->\n');
+  for (let i=0;i<2;i++) {
+    const result = await run(['bash',join(import.meta.dir,'presentation-maker'),'update'],f.env);
+    expect(result.code,result.stderr).toBe(0);
+    const text=await readFile(instructions,'utf8');
+    expect(text).toContain('Mis instrucciones personalizadas');
+    expect(text).toContain('add_video_slides');
+    expect(text.match(/managed-layout:start/g)?.length).toBe(1);
+    expect(text).not.toContain('-->old<!--');
+    expect(JSON.parse(await readFile(manifest,'utf8'))).toEqual(config);
+  }
 });

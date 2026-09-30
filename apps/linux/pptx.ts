@@ -1,3 +1,4 @@
+import { validateDocument } from './document.ts';
 import { MEDIA_PROFILE } from './media.ts';
 import type { Database } from 'bun:sqlite';
 import { cp, mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
@@ -28,7 +29,7 @@ function shape(item: any, shapeId: number, rel: number): string {
 }
 
 export async function exportPptx(doc: any, db: Database, root: string, target: string) {
-  if (!Array.isArray(doc.slides) || !doc.slides.length) throw new Error('La presentación no tiene diapositivas.');
+  validateDocument(doc);
   const temp = await mkdtemp(join(tmpdir(), 'pm-pptx-'));
   try {
     await run(['unzip','-q',resolve(process.env.PRESENTATION_MAKER_TEMPLATE || resolve(import.meta.dir,'../local/template.pptx')),'-d',temp]);

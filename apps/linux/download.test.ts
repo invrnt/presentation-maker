@@ -43,6 +43,8 @@ else {
     await chmod(join(bin, 'deno'), 0o755);
     const script = join(dir, 'check.ts');
     await writeFile(script, `
+import { Database } from 'bun:sqlite';
+const db = new Database(${JSON.stringify(join(data,'app.db'))});
 import { handle } from ${JSON.stringify(join(import.meta.dir, 'server.ts'))};
 const req = async (path, method='GET', value) => {
   const response = await handle(new Request('http://localhost'+path, {method, ...(value ? {body:JSON.stringify(value),headers:{'Content-Type':'application/json'}} : {})}));
@@ -60,20 +62,52 @@ const catalog = await req('/api/songs');
 const cached = await req('/api/songs/'+song.id+'/download','POST');
 const cacheJob = await req('/api/jobs/'+cached.jobId);
 const project = await req('/api/projects','POST');
-project.document.slides[0].elements.push({id:'v',type:'video',youtubeId:song.id,x:0,y:0,width:1920,height:1080});
-project.document.slides.push({id:'repeat',elements:[{...project.document.slides[0].elements[0]}]});
-await req('/api/projects/'+project.id,'PUT',project.document);
+for (const alias of ['second12345','third123456']) {
+  db.query('INSERT INTO songs VALUES (?,?,?,?)').run(alias,'https://youtu.be/'+alias,alias,1);
+  db.query('INSERT INTO media SELECT ?,path,poster,profile FROM media WHERE youtube_id=?').run(alias,song.id);
+}
+const operation={requestId:'ordered-batch',youtubeIds:[song.id,'third123456',song.id,'second12345']};
+const added=await req('/api/projects/'+project.id+'/video-slides','POST',operation);
+const replay=await req('/api/projects/'+project.id+'/video-slides','POST',operation);
+const check=await req('/api/projects/'+project.id+'/validate');
+const failureReq=async(path,method,body) => {const r=await handle(new Request('http://local'+path,{method,body:JSON.stringify(body),headers:{'Content-Type':'application/json'}}));return {status:r.status,...await r.json()};};
+const conflict=await failureReq('/api/projects/'+project.id+'/video-slides','POST',{...operation,youtubeIds:[song.id]});
+const unavailable=await failureReq('/api/projects/'+project.id+'/video-slides','POST',{requestId:'not-ready',youtubeIds:[song.id,'missing1234']});
+const saved=await req('/api/projects/'+project.id);
+const stacked=structuredClone(saved.document);
+stacked.slides[0].elements.push({...stacked.slides[0].elements[0],id:'other'});
+const rejectedSave=await failureReq('/api/projects/'+project.id,'PUT',stacked);
+// Old malformed documents must also be rejected at export, even if they bypassed saving.
+db.query('UPDATE projects SET document=? WHERE id=?').run(JSON.stringify(stacked),project.id);
+const rejectedExport=await failureReq('/api/projects/'+project.id+'/export','POST',{});
+db.query('UPDATE projects SET document=? WHERE id=?').run(JSON.stringify(saved.document),project.id);
 const exported = await req('/api/projects/'+project.id+'/export','POST');
+const withTitle=await req('/api/projects','POST');
+withTitle.document.slides[0].elements.push({id:'title',type:'text',text:'Conservar portada',x:0,y:0,width:1920,height:100});
+await req('/api/projects/'+withTitle.id,'PUT',withTitle.document);
+await Promise.all(['batch-a','batch-b'].map(requestId=>req('/api/projects/'+withTitle.id+'/video-slides','POST',{requestId,youtubeIds:[song.id]})));
+const preserved=await req('/api/projects/'+withTitle.id);
 const broken = await req('/api/songs/import','POST',{url:'https://youtu.be/broken12345'});
 const failure = await req('/api/songs/'+broken.id+'/download','POST');
 let failed;
 for (let i=0;i<300;i++) { failed=await req('/api/jobs/'+failure.jobId); if(failed.done) break; await Bun.sleep(50); }
-console.log(JSON.stringify({health,interrupted,sameJob:start.jobId===duplicate.jobId,job,catalog,cacheJob,exported,failed}));
+console.log(JSON.stringify({preserved,added,replay,check,conflict,unavailable,rejectedSave,rejectedExport,health,interrupted,sameJob:start.jobId===duplicate.jobId,job,catalog,cacheJob,exported,failed}));
 `);
     const child = Bun.spawn([process.execPath, script], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, PRESENTATION_MAKER_DATA_DIR: join(dir, 'data') }, stdout: 'pipe', stderr: 'pipe' });
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect(code, stderr).toBe(0);
     const result = JSON.parse(stdout);
+    expect(result.preserved.document.slides.length).toBe(3);
+    expect(result.preserved.document.slides[0].elements[0].text).toBe('Conservar portada');
+    expect(result.added.slideCount).toBe(4);
+    expect(result.replay.replayed).toBe(true);
+    expect(result.replay.addedSlideIds).toEqual(result.added.addedSlideIds);
+    expect(result.check.slides.map(s => s.videoIds)).toEqual([['video123456'],['third123456'],['video123456'],['second12345']]);
+    expect(result.conflict.failure.code).toBe('REQUEST_CONFLICT');
+    expect(result.unavailable.failure.code).toBe('VIDEO_NOT_READY');
+    expect(result.rejectedSave.failure.code).toBe('OVERLAPPING_VIDEOS');
+    expect(result.rejectedExport.failure.code).toBe('OVERLAPPING_VIDEOS');
+    expect(result.exported.validation.slideCount).toBe(4);
     expect(result.health.ready).toBe(true);
     expect(result.sameJob).toBe(true);
     expect(result.job.done).toBe(true);
@@ -87,7 +121,16 @@ console.log(JSON.stringify({health,interrupted,sameJob:start.jobId===duplicate.j
     expect(result.failed.failure.code).toBe('ACCESS_RESTRICTED');
     expect(result.failed.error).not.toContain('hidden');
     const listing = await command(['unzip', '-l', join(dir, 'data', 'exports', result.exported.filename)]);
+    expect(listing).toContain('ppt/slides/slide4.xml');
+    expect(listing).not.toContain('ppt/slides/slide5.xml');
+    for (let i=1;i<=4;i++) {
+      const xml=await command(['unzip','-p',join(dir,'data','exports',result.exported.filename),`ppt/slides/slide${i}.xml`]);
+      expect(xml.match(/<a:videoFile /g)?.length).toBe(1);
+      const rels=await command(['unzip','-p',join(dir,'data','exports',result.exported.filename),`ppt/slides/_rels/slide${i}.xml.rels`]);
+      expect(rels).toContain(`Target="../media/video${[1,2,1,3][i-1]}.mp4"`);
+    }
     expect(listing).toContain('ppt/media/video1.mp4');
-    expect(listing).not.toContain('ppt/media/video2.mp4');
+    expect(listing).toContain('ppt/media/video3.mp4');
+    expect(listing).not.toContain('ppt/media/video4.mp4');
   } finally { await rm(dir, { recursive: true, force: true }); }
 }, 30_000);

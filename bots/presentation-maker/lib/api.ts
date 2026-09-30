@@ -357,7 +357,7 @@ export async function aiPlan(
 export async function exportProject(
   id: string,
   signal?: AbortSignal,
-): Promise<{ url: string; filename: string }> {
+): Promise<{ url: string; filename: string; validation?: { slideCount: number; videoCount: number; slides: { index: number; videoIds: string[] }[] } }> {
   await ensureLogin(signal);
   return api(`/api/projects/${encodeURIComponent(id)}/export`, {
     method: 'POST',

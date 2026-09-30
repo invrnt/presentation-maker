@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite';
 import { mkdir, rename, rm, statfs, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { basename, delimiter, join, resolve } from 'node:path';
+import { validateDocument, DocumentError } from './document.ts';
 import { exportPptx } from './pptx.ts';
 import { command, mediaTools, mediaFailure, downloadOptions, formatOptions, normalizeVideo, mediaTimeout, MEDIA_PROFILE } from './media.ts';
 
@@ -37,6 +38,8 @@ function updateJob(jobId: string, patch: Partial<Job>) {
   const next = { ...current, ...patch };
   db.query('UPDATE download_jobs SET message=?,error=?,done=? WHERE id=?').run(next.message, next.error, Number(next.done), jobId);
 }
+db.run('CREATE TABLE IF NOT EXISTS slide_operations (project_id TEXT NOT NULL, request_id TEXT NOT NULL, input TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(project_id, request_id))');
+const documentFailure = (e: unknown) => e instanceof DocumentError ? json({ error: e.message, failure: { code: e.code, message: e.message, retryable: false } }, 422) : error('No se pudo completar la operación.', 500);
 const id = () => crypto.randomUUID().replaceAll('-', '');
 const validId = (s: string) => /^[a-zA-Z0-9_-]{1,64}$/.test(s);
 const json = (value: unknown, status = 200) => Response.json(value, { status });
@@ -96,22 +99,58 @@ export async function handle(req: Request): Promise<Response> {
     db.query('INSERT INTO projects VALUES (?,?,?,?,?)').run(projectId, doc.title, JSON.stringify(doc), now, now);
     return json(rowToProject(db.query('SELECT * FROM projects WHERE id=?').get(projectId)), 201);
   }
-  const project = /^\/api\/projects\/([^/]+)(?:\/(export))?$/.exec(path);
+  const project = /^\/api\/projects\/([^/]+)(?:\/(export|video-slides|validate))?$/.exec(path);
   if (project && validId(project[1])) {
     const projectId = project[1], row: any = db.query('SELECT * FROM projects WHERE id=?').get(projectId);
     if (!row) return error('No encontramos ese proyecto.', 404);
+    if (project[2] === 'validate' && method === 'GET') {
+      try { return json({ ok: true, ...validateDocument(JSON.parse(row.document)) }); }
+      catch (e) { return documentFailure(e); }
+    }
+    if (project[2] === 'video-slides' && method === 'POST') {
+      const input = await body(req);
+      if (!input || typeof input.requestId !== 'string' || !validId(input.requestId) || !Array.isArray(input.youtubeIds) || !input.youtubeIds.length || input.youtubeIds.length > 200 || !input.youtubeIds.every((v: unknown) => typeof v === 'string' && /^[a-zA-Z0-9_-]{6,20}$/.test(v))) return documentFailure(new DocumentError('INVALID_INPUT', 'Indica requestId y una lista ordenada de youtubeIds preparados.'));
+      try {
+        const result = db.transaction(() => {
+          const fingerprint = JSON.stringify(input.youtubeIds);
+          const prior: any = db.query('SELECT input,result FROM slide_operations WHERE project_id=? AND request_id=?').get(projectId,input.requestId);
+          if (prior) {
+            if (prior.input !== fingerprint) throw new DocumentError('REQUEST_CONFLICT', 'requestId ya fue utilizado con otros videos. Usa uno nuevo para una operación distinta.');
+            return { ...JSON.parse(prior.result), replayed: true };
+          }
+          const doc = JSON.parse((db.query('SELECT document FROM projects WHERE id=?').get(projectId) as any).document);
+          validateDocument(doc);
+          const catalog = songs();
+          const added = input.youtubeIds.map((youtubeId: string) => {
+            const song: any = catalog.find((s: any) => s.youtubeId === youtubeId);
+            if (!song?.downloaded) throw new DocumentError('VIDEO_NOT_READY', `El video ${youtubeId} no está preparado. Usa prepare_song y consulta get_download_job antes de añadirlo.`);
+            return { id: id(), elements: [{ id:id(), type:'video', youtubeId, title:song.title, x:160, y:90, width:1600, height:900, fit:'contain' }] };
+          });
+          // Reuse only the untouched placeholder; never discard authored slides.
+          if (doc.slides.length === 1 && doc.slides[0].elements.length === 0) doc.slides = [];
+          doc.slides.push(...added);
+          const summary = validateDocument(doc);
+          const result = { ok:true, projectId, addedSlideIds:added.map((s: any) => s.id), ...summary };
+          db.query('UPDATE projects SET document=?,updated_at=? WHERE id=?').run(JSON.stringify(doc),Math.floor(Date.now()/1000),projectId);
+          db.query('INSERT INTO slide_operations VALUES (?,?,?,?)').run(projectId,input.requestId,fingerprint,JSON.stringify(result));
+          return result;
+        })();
+        return json(result);
+      } catch (e) { return documentFailure(e); }
+    }
     if (project[2] === 'export' && method === 'POST') {
       try {
         const doc = JSON.parse(row.document);
         const filename = `${doc.title.replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 70) || 'Presentacion'}-${id()}.pptx`;
         await exportPptx(doc, db, root, join(root, 'exports', filename));
-        return json({ url: `/api/exports/${encodeURIComponent(filename)}`, filename });
-      } catch (e) { return error(e instanceof Error ? e.message : String(e), 409); }
+        return json({ url: `/api/exports/${encodeURIComponent(filename)}`, filename, validation: validateDocument(doc) });
+      } catch (e) { return e instanceof DocumentError ? documentFailure(e) : error(e instanceof Error ? e.message : String(e), 409); }
     }
     if (method === 'GET' && !project[2]) return json(rowToProject(row));
     if (method === 'PUT' && !project[2]) {
       const doc = await body(req);
       if (!doc || doc.version !== 1 || doc.id !== projectId || typeof doc.title !== 'string' || !Array.isArray(doc.slides) || !doc.slides.length) return error('El proyecto no es válido.');
+      try { validateDocument(doc); } catch (e) { return documentFailure(e); }
       db.query('UPDATE projects SET title=?,document=?,updated_at=? WHERE id=?').run(doc.title, JSON.stringify(doc), Math.floor(Date.now()/1000), projectId);
       return json({ ok: true });
     }

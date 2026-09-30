@@ -65,6 +65,17 @@ for config in vian.json VIAN.md; do
     cp "$source_dir/bots/presentation-maker/$config" "$target/bots/presentation-maker/"
   fi
 done
+# Refresh application-owned guidance without replacing user instructions.
+python3 - "$source_dir/bots/presentation-maker/VIAN.md" "$target/bots/presentation-maker/VIAN.md" <<'PYRULES'
+import pathlib,re,sys
+source,target=map(pathlib.Path,sys.argv[1:])
+pattern=r'<!-- presentation-maker:managed-layout:start -->.*?<!-- presentation-maker:managed-layout:end -->'
+block=re.search(pattern,source.read_text(),re.S)
+if block:
+    original=target.read_text()
+    updated=re.sub(pattern,lambda _:block.group(),original,flags=re.S) if re.search(pattern,original,re.S) else original.rstrip()+'\n\n'+block.group()+'\n'
+    target.write_text(updated)
+PYRULES
 # Migrate only the previous default; preserve custom limits and all other settings.
 python3 - "$target/bots/presentation-maker/vian.json" <<'PYCONFIG'
 import json,sys,os
