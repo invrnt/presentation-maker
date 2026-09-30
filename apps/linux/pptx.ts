@@ -4,7 +4,6 @@ import type { Database } from 'bun:sqlite';
 import { cp, mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
 
 const xml = (s: unknown) => String(s ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&apos;');
 const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -28,9 +27,11 @@ function shape(item: any, shapeId: number, rel: number): string {
   return `<p:pic><p:nvPicPr><p:cNvPr id="${shapeId}" name="Video ${shapeId}"><a:hlinkClick r:id="" action="ppaction://media"/></p:cNvPr><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr><a:videoFile r:link="rId${rel+1}"/><p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}"><p14:media xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" r:embed="rId${rel+2}"/></p:ext></p:extLst></p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="rId${rel}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${frame}</p:spPr></p:pic>`;
 }
 
-export async function exportPptx(doc: any, db: Database, root: string, target: string) {
+export async function exportPptx(doc: any, db: Database, root: string, target: string, active = new Set<string>()) {
   validateDocument(doc);
-  const temp = await mkdtemp(join(tmpdir(), 'pm-pptx-'));
+  await mkdir(join(root,'tmp'),{recursive:true});
+  const temp = await mkdtemp(join(root, 'tmp', 'pm-pptx-'));
+  active.add(temp); active.add(target);
   try {
     await run(['unzip','-q',resolve(process.env.PRESENTATION_MAKER_TEMPLATE || resolve(import.meta.dir,'../local/template.pptx')),'-d',temp]);
     await rm(join(temp,'ppt/slides'), { recursive:true, force:true });
@@ -87,5 +88,5 @@ export async function exportPptx(doc: any, db: Database, root: string, target: s
     await rm(target,{force:true});
     await run(['zip','-qr',target,'.'],temp);
     await run(['unzip','-tq',target]);
-  } finally { await rm(temp,{recursive:true,force:true}); }
+  } finally { active.delete(temp); active.delete(target); await rm(temp,{recursive:true,force:true}); }
 }

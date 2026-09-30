@@ -1,3 +1,4 @@
+import { cleanupWorkingFiles } from './retention.ts';
 import { Database } from 'bun:sqlite';
 import { mkdir, rename, rm, statfs, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -11,7 +12,7 @@ const managedBin = resolve(import.meta.dir, '../../bin');
 if (existsSync(join(managedBin, 'yt-dlp'))) process.env.PATH = `${managedBin}${delimiter}${process.env.PATH || ''}`;
 
 const root = resolve(process.env.PRESENTATION_MAKER_DATA_DIR || join(process.env.HOME || '.', '.local/share/presentation-maker-linux'));
-for (const path of ['assets', 'cache/media', 'cache/thumbnails', 'exports']) await mkdir(join(root, path), { recursive: true });
+for (const path of ['assets', 'cache/media', 'cache/thumbnails', 'exports', 'tmp']) await mkdir(join(root, path), { recursive: true });
 const db = new Database(join(root, 'app.db'), { create: true });
 db.run('PRAGMA journal_mode=WAL');
 db.run('CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, title TEXT NOT NULL, document TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)');
@@ -27,6 +28,7 @@ for (const entry of await readdir(join(root, 'cache/media'))) {
   if (/^job-[a-f0-9]+$/.test(entry)) await rm(join(root, 'cache/media', entry), { recursive: true, force: true });
 }
 let downloadQueue = Promise.resolve();
+const activeExports = new Set<string>();
 const activeDownloads = new Map<string, string>();
 type Job = { message: string; error: string; done: boolean };
 function getJob(jobId: string): Job | null {
@@ -65,9 +67,11 @@ async function download(youtubeId: string, url: string, jobId: string) {
     const disk = await statfs(root);
     if (disk.bavail * disk.bsize < 256 * 1024 * 1024) throw new Error('ENOSPC: se requieren al menos 256 MB libres para iniciar.');
     await mkdir(work, { recursive: true });
-    updateJob(jobId, { message: 'Descargando la resolución más cercana a 1080p…' });
-    const temporary = (await command(['yt-dlp', ...downloadOptions, ...formatOptions, '--no-simulate', '--print', 'after_move:filepath', '--match-filters', '!is_live', '--merge-output-format', 'mkv', '-o', join(work, 'source.%(ext)s'), '--', url], mediaTimeout())).trim();
-    if (!temporary.startsWith(join(work, 'source.')) || resolve(temporary) !== temporary || !existsSync(temporary)) throw new Error('yt-dlp no devolvió el archivo descargado.');
+    const previous: any = db.query('SELECT path,profile FROM media WHERE youtube_id=?').get(youtubeId);
+    const localSource = previous?.path && existsSync(previous.path) ? previous.path : undefined;
+    updateJob(jobId, { message: localSource ? 'Actualizando formato desde la caché local…' : 'Descargando la resolución más cercana a 1080p…' });
+    const temporary = localSource || (await command(['yt-dlp', ...downloadOptions, ...formatOptions, '--no-simulate', '--print', 'after_move:filepath', '--match-filters', '!is_live', '--merge-output-format', 'mkv', '-o', join(work, 'source.%(ext)s'), '--', url], mediaTimeout())).trim();
+    if (!localSource && (!temporary.startsWith(join(work, 'source.')) || resolve(temporary) !== temporary || !existsSync(temporary))) throw new Error('yt-dlp no devolvió el archivo descargado.');
     updateJob(jobId, { message: 'Normalizando y verificando MP4 H.264/AAC…' });
     const converted = join(work, 'normalized.mp4');
     const info = await normalizeVideo(temporary, converted);
@@ -124,7 +128,7 @@ export async function handle(req: Request): Promise<Response> {
           const added = input.youtubeIds.map((youtubeId: string) => {
             const song: any = catalog.find((s: any) => s.youtubeId === youtubeId);
             if (!song?.downloaded) throw new DocumentError('VIDEO_NOT_READY', `El video ${youtubeId} no está preparado. Usa prepare_song y consulta get_download_job antes de añadirlo.`);
-            return { id: id(), elements: [{ id:id(), type:'video', youtubeId, title:song.title, x:160, y:90, width:1600, height:900, fit:'contain' }] };
+            return { id: id(), elements: [{ id:id(), type:'video', youtubeId, title:song.title, x:0, y:0, width:1920, height:1080, fit:'cover' }] };
           });
           // Reuse only the untouched placeholder; never discard authored slides.
           if (doc.slides.length === 1 && doc.slides[0].elements.length === 0) doc.slides = [];
@@ -142,7 +146,9 @@ export async function handle(req: Request): Promise<Response> {
       try {
         const doc = JSON.parse(row.document);
         const filename = `${doc.title.replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 70) || 'Presentacion'}-${id()}.pptx`;
-        await exportPptx(doc, db, root, join(root, 'exports', filename));
+        activeExports.add(projectId);
+        try { await exportPptx(doc, db, root, join(root, 'exports', filename), activeExports); }
+        finally { activeExports.delete(projectId); }
         return json({ url: `/api/exports/${encodeURIComponent(filename)}`, filename, validation: validateDocument(doc) });
       } catch (e) { return e instanceof DocumentError ? documentFailure(e) : error(e instanceof Error ? e.message : String(e), 409); }
     }
@@ -163,10 +169,15 @@ export async function handle(req: Request): Promise<Response> {
     return json({ assetId: name, url: `/media/assets/${name}` }, 201);
   }
   if (path === '/api/songs' && method === 'GET') return json(songs());
+  if (path === '/api/maintenance/cleanup' && method === 'POST') return json(await cleanupWorkingFiles(root, db, Date.now(), activeExports));
   if (path === '/api/songs/import' && method === 'POST') {
     const input = await body(req), link = youtubeUrl(input?.url);
     if (!link) return error('Pega un enlace válido de YouTube.');
     try {
+      const parsed = new URL(link);
+      const cachedId = parsed.hostname === 'youtu.be' ? parsed.pathname.split('/')[1] : parsed.searchParams.get('v') || (/^\/(shorts|embed|live)\//.test(parsed.pathname) ? parsed.pathname.split('/')[2] : null);
+      const cached = songs().find((s: any) => s.youtubeId === cachedId);
+      if (cached) return json(cached);
       const meta = JSON.parse(await command(['yt-dlp', ...downloadOptions, '--dump-single-json', '--skip-download', '--', link]));
       if (meta.is_live || meta.live_status === 'is_upcoming') return error('Espera a que termine la transmisión en vivo para descargarla.');
       if (!/^[A-Za-z0-9_-]{6,20}$/.test(meta.id)) return error('YouTube devolvió información inválida.', 502);
@@ -215,6 +226,7 @@ export async function handle(req: Request): Promise<Response> {
     if (path.startsWith(prefix)) {
       const file = safeFile(dir, decodeURIComponent(path.slice(prefix.length)));
       if (!file || !existsSync(file)) return error('Archivo no encontrado.', 404);
+      if (dir === 'exports' && method === 'DELETE') { await rm(file,{force:true}); return json({ok:true}); }
       return new Response(Bun.file(file), { headers: dir === 'exports' ? { 'Content-Disposition': `attachment; filename="${basename(file)}"` } : {} });
     }
   }
@@ -226,6 +238,9 @@ export async function handle(req: Request): Promise<Response> {
 }
 
 if (import.meta.main) {
+  await cleanupWorkingFiles(root, db);
+  let cleaning = false;
+  setInterval(async () => { if (cleaning) return; cleaning = true; try { await cleanupWorkingFiles(root, db, Date.now(), activeExports); } catch { console.error('No se pudo completar la limpieza temporal.'); } finally { cleaning = false; } }, 60_000).unref();
   const port = Number(process.env.PRESENTATION_MAKER_PORT || 3210);
   Bun.serve({ hostname: '127.0.0.1', port, fetch: handle });
   console.log(`Presentation Maker Linux: http://127.0.0.1:${port}`);

@@ -19,6 +19,7 @@ for (const fixture of cases) test(`normalizes and fully decodes ${fixture.name}`
   const result = await normalizeVideo(src, dst);
   expect(result.width % 2).toBe(0);
   expect(result.height % 2).toBe(0);
+  expect(result.width * 9).toBe(result.height * 16);
   const info = await probe(dst);
   expect(info.streams[0].codec_name).toBe('h264');
   expect(info.streams[0].pix_fmt).toBe('yuv420p');
@@ -68,3 +69,12 @@ test.skipIf(!ytDlp)('real yt-dlp selects the nearest resolution including higher
     expect(chosen.trim()).toBe(`r${expected}`);
   }
 }, 15_000);
+
+
+test('portrait video is center cropped to 16:9 without stretching',async()=>{
+ const src=join(dir,'portrait.mkv'),dst=join(dir,'portrait.mp4');
+ await command(['ffmpeg','-v','error','-y','-f','lavfi','-i','testsrc2=size=180x320:rate=24','-t','0.3','-c:v','ffv1',src]);
+ const result=await normalizeVideo(src,dst);
+ expect(result.width*9).toBe(result.height*16);
+ expect(result.width).toBeLessThanOrEqual(180);
+});

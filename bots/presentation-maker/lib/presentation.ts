@@ -31,11 +31,11 @@ export function videoElement(song: Song): SlideElement {
     youtubeId: song.youtubeId,
     title: song.title,
     posterUrl: song.posterUrl,
-    x: 160,
-    y: 90,
-    width: 1600,
-    height: 900,
-    fit: 'contain',
+    x: 0,
+    y: 0,
+    width: 1920,
+    height: 1080,
+    fit: 'cover',
   };
 }
 

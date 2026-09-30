@@ -165,3 +165,24 @@ del agente.
 El actualizador renueva únicamente el bloque `presentation-maker:managed-layout`
 de `VIAN.md`, conservando las instrucciones personalizadas y la configuración de
 Telegram local. Como antes, respalda la instalación y recarga el bot activo.
+
+### Retención y caché de canciones
+
+Se requiere Vian `v0.1.0-preview.12` o posterior para la eliminación tras entrega.
+Los PPTX se registran con TTL de 24 horas y `deleteAfterDelivery=true`; la copia
+redundante de exportación se elimina al registrar el adjunto. Vian elimina la
+copia de envío tras la confirmación durable de Telegram, o por TTL si no se envía.
+No se borra un archivo que está abierto en una entrega. Los respaldos de actualización
+excluyen adjuntos y temporales para no conservar duplicados de los PPTX.
+
+El backend limpia exportaciones, imágenes de trabajo, temporales, proyectos sin
+modificar y trabajos terminados de más de 24 horas al arrancar y cada minuto.
+`POST /api/maintenance/cleanup` permite ejecutar esa limpieza de forma inmediata.
+No se borran credenciales, configuración ni historial de Vian.
+
+Las tablas SQLite `songs` y `media` forman el índice permanente: clave canónica
+YouTube, metadatos, ruta local y perfil de compatibilidad. Los enlaces watch,
+youtu.be, shorts, embed y live reutilizan la misma canción. La caché y sus miniaturas
+no tienen caducidad. Un cambio de perfil convierte la copia local sin descargarla.
+El perfil `pptx-h264-aac-16x9-v3` conserva proporciones mediante recorte centrado a
+16:9 y coloca el video en todo el lienzo 1920×1080; no estira ni añade márgenes.

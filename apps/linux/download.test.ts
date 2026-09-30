@@ -27,6 +27,7 @@ test('API queues, deduplicates, publishes verified media, embeds it and exposes 
     const yt = join(bin, 'yt-dlp');
     await writeFile(yt, `#!${process.execPath}
 const args = process.argv.slice(2);
+if (args.at(-1)?.includes('/shorts/')) process.exit(91);
 if (args.includes('--version')) console.log('test');
 else if (args.includes('--dump-single-json')) console.log(JSON.stringify({ id: args.at(-1).includes('broken') ? 'broken12345' : 'video123456', title: 'Test', duration: 0.3 }));
 else {
@@ -59,8 +60,19 @@ const duplicate = await req('/api/songs/'+song.id+'/download','POST');
 let job;
 for (let i=0;i<300;i++) { job=await req('/api/jobs/'+start.jobId); if(job.done) break; await Bun.sleep(50); }
 const catalog = await req('/api/songs');
+const cachedLink=await req('/api/songs/import','POST',{url:'https://www.youtube.com/shorts/video123456?feature=share'});
+if(cachedLink.id!==song.id || !cachedLink.downloaded) throw Error('Canonical cache lookup failed');
 const cached = await req('/api/songs/'+song.id+'/download','POST');
 const cacheJob = await req('/api/jobs/'+cached.jobId);
+// Local profile migration must never invoke the downloader again.
+db.query('UPDATE media SET profile=? WHERE youtube_id=?').run('pptx-h264-aac-v2',song.id);
+const originalDownloader=await Bun.file(${JSON.stringify(yt)}).text();
+await Bun.write(${JSON.stringify(yt)}, '#!/bin/sh\\nexit 93\\n');
+const migration=await req('/api/songs/'+song.id+'/download','POST');
+let migrated;
+for(let i=0;i<300;i++){migrated=await req('/api/jobs/'+migration.jobId);if(migrated.done)break;await Bun.sleep(50);}
+if(!migrated.done||migrated.error)throw Error('Local migration failed');
+await Bun.write(${JSON.stringify(yt)},originalDownloader);
 const project = await req('/api/projects','POST');
 for (const alias of ['second12345','third123456']) {
   db.query('INSERT INTO songs VALUES (?,?,?,?)').run(alias,'https://youtu.be/'+alias,alias,1);
@@ -126,6 +138,7 @@ console.log(JSON.stringify({preserved,added,replay,check,conflict,unavailable,re
     for (let i=1;i<=4;i++) {
       const xml=await command(['unzip','-p',join(dir,'data','exports',result.exported.filename),`ppt/slides/slide${i}.xml`]);
       expect(xml.match(/<a:videoFile /g)?.length).toBe(1);
+      expect(xml).toContain('<a:off x="0" y="0"/><a:ext cx="12192000" cy="6858000"/>');
       const rels=await command(['unzip','-p',join(dir,'data','exports',result.exported.filename),`ppt/slides/_rels/slide${i}.xml.rels`]);
       expect(rels).toContain(`Target="../media/video${[1,2,1,3][i-1]}.mp4"`);
     }

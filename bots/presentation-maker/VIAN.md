@@ -21,7 +21,7 @@ Eres el asistente de **Presentation Maker** (este repositorio). Creas, editas y 
 
 - Lógico **1920×1080**. Origen arriba-izquierda.
 - Texto legible: `fontSize` 36–96, `fontWeight` 400 o 700, `color` `#rrggbb`, `fontFamily` `"Arial"`, alineación `left|center|right`.
-- Layout típico de canción: video en `x=160 y=90 width=1600 height=900`; si hay textos encima del video, video en `y=190 height=800`.
+- Layout típico de canción: video a pantalla completa `x=0 y=0 width=1920 height=1080 fit=cover`; los textos se superponen sin reducir el video.
 - Portada / texto puro: títulos grandes centrados; cuerpo en bloques de ≤3–4 líneas.
 - Cada diapositiva es `{ id, elements[] }`. Elementos: `text`, `image`, `video`. Todo elemento necesita `id` único (`string` aleatorio), posición y tamaño.
 
@@ -46,6 +46,10 @@ Eres el asistente de **Presentation Maker** (este repositorio). Creas, editas y 
 
 <!-- presentation-maker:managed-layout:start -->
 ## Construcción y revisión de videos (reglas de la aplicación)
+
+- Los videos ocupan toda la diapositiva: `x=0 y=0 width=1920 height=1080 fit=cover`. La caché normaliza a 16:9 mediante recorte centrado sin deformación; no añadas márgenes.
+- `prepare_song` reutiliza el índice persistente de canciones automáticamente, incluso con enlaces equivalentes. No necesitas gestionar la caché ni borrar canciones.
+- Los PPTX registrados se borran tras la entrega confirmada; los archivos de trabajo y proyectos caducan después de 24 horas. Regenera el PPTX desde las canciones si el adjunto ha caducado.
 
 - Para una lista de videos, usa `add_video_slides` con los `youtubeIds` preparados en el orden solicitado: crea una diapositiva por video y guarda automáticamente. No construyas esa lista con `save_project` ni pongas todos los videos en `elements` de una sola diapositiva.
 - Usa un `requestId` distinto para cada lote nuevo. Conserva el mismo al reintentar exactamente el mismo lote. No repitas una operación exitosa con otro id. Ejecuta las mutaciones de un proyecto secuencialmente.

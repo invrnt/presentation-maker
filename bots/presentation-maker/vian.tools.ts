@@ -29,7 +29,7 @@ import { applyAIPlan, prepareSong } from './lib/presentation.ts';
 type Ctx = {
   abortSignal: AbortSignal;
   attachments: {
-    register(input: { path: string; name: string; mimeType: string }): Promise<unknown> & {
+    register(input: { path: string; name: string; mimeType: string; ttlHours?: number; deleteAfterDelivery?: boolean }): Promise<unknown> & {
       id?: string;
       name?: string;
     };
@@ -516,8 +516,9 @@ export default {
       return withBackend(ctx.abortSignal, async (signal) => {
         const exportResult = await exportProject(assertProjectId(input.projectId), signal);
         const fs = await import('node:fs/promises');
-        const os = await import('node:os');
-        const tempDir = await fs.mkdtemp(join(os.tmpdir(), 'pptx-'));
+        const workRoot = join(BOT_ROOT, '.vian', 'tmp');
+        await fs.mkdir(workRoot, {recursive:true,mode:0o700});
+        const tempDir = await fs.mkdtemp(join(workRoot, 'pptx-'));
         const tempPath = join(tempDir, exportResult.filename);
         try {
           let byteLength: number;
@@ -535,7 +536,10 @@ export default {
             path: tempPath,
             name: input.filename?.trim() || exportResult.filename,
             mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            ttlHours: 24, deleteAfterDelivery: true,
           });
+          // The registry owns a durable copy now; discard the duplicate export.
+          if (LINUX_LOCAL) await api(exportResult.url, {method:'DELETE',signal}).catch(() => {});
           return {
             validation: exportResult.validation,
             message: 'Presentación exportada. Envíala con send_attachment.',

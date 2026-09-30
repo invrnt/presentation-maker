@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-export const MEDIA_PROFILE = 'pptx-h264-aac-v2';
+export const MEDIA_PROFILE = 'pptx-h264-aac-16x9-v3';
 export function mediaTimeout(): number {
   const hours = Number(process.env.PRESENTATION_MAKER_MEDIA_TIMEOUT_HOURS ?? 6);
   if (!Number.isFinite(hours) || hours < 0) throw new Error('PRESENTATION_MAKER_MEDIA_TIMEOUT_HOURS debe ser un número >= 0.');
@@ -82,6 +82,9 @@ export async function normalizeVideo(source: string, target: string) {
     // Keep orientation and aspect ratio; never enlarge a smaller source.
     "scale=w='max(2,trunc(iw*sar/2)*2)':h='max(2,trunc(ih/2)*2)'", 'setsar=1',
     "scale=w='if(gte(iw,ih),min(1920,iw),min(1080,iw))':h='if(gte(iw,ih),min(1080,ih),min(1920,ih))':force_original_aspect_ratio=decrease:force_divisible_by=2",
+    // Fill 16:9 by centered cropping, never stretch; retain small-source resolution.
+    'scale=w=max(32\\,iw):h=max(18\\,ih):force_original_aspect_ratio=increase',
+    "crop=w='trunc(min(iw,ih*16/9)/32)*32':h='trunc(min(ih,iw*9/16)/18)*18'",
     'setsar=1', 'fps=30', 'format=yuv420p',
   ];
   await command(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-xerror', '-i', source, '-map', `0:${video.index}`, ...(audio ? ['-map', `0:${audio.index}`] : []), '-sn', '-dn', '-map_metadata', '-1', '-vf', filters.join(','), '-c:v', 'libx264', '-threads', '2', '-preset', 'veryfast', '-crf', '22', '-maxrate', '20M', '-bufsize', '40M', '-profile:v', 'high', '-level:v', '4.1', '-pix_fmt', 'yuv420p', '-tag:v', 'avc1', '-c:a', 'aac', '-profile:a', 'aac_low', '-ac', '2', '-ar', '48000', '-b:a', '160k', '-movflags', '+faststart', target], mediaTimeout());
